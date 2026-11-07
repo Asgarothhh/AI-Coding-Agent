@@ -190,6 +190,32 @@ def run(options: RunOptions) -> dict[str, Any]:
                 0.0,
             )
 
+    # A zero wall-clock limit is the degenerate deadline: attempt no task at
+    # all, account for every planned task as skipped, and return the normal
+    # summary.  Positive values remain a real deadline below.
+    if options.time_limit == 0:
+        for item in plan:
+            if item.status == "planned":
+                finalize(
+                    item,
+                    SolveResult(None, 0.0, "", "skipped: time limit reached (time_limit=0)"),
+                    "skipped",
+                    0.0,
+                )
+        return _solve_summary(
+            tasks=tasks,
+            plan=plan,
+            results=results,
+            store=store,
+            budget=budget,
+            options=options,
+            llm=llm,
+            infeasible=infeasible,
+            planned=planned,
+            stop_reason="time_limit",
+            duration=time.monotonic() - started,
+        )
+
     def run_one(item: PlanItem) -> None:
         task = item.task
         task_started = time.monotonic()
