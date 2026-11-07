@@ -52,8 +52,13 @@ harness/
   trace.py                       JSONL trace
   mock_proxy.py                  local OpenAI-compatible proxy for tests
   ojiuwen_runtime.py             optional DeepAgent adapter (build_agent/run_query)
+Dockerfile                       python:3.11-slim image with openjiuwen pinned
+scripts/build.sh                 build hack:latest + openjiuwen-hack:latest
+scripts/run_local.sh             offline hardened smoke run
+requirements.txt                 runtime SDK pin (openjiuwen==0.1.20.post1)
 requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
 tests/                           stdlib unittest suite
+tests/contract/                  29 contract tests (paths, budget, planner, parallel, time limit, E2E)
 examples/task-dir/               eight official examples
 ```
 
@@ -169,9 +174,13 @@ contract.
   and tests do not require the SDK.
 * Builds `Model` from `ModelClientConfig(client_provider="OpenAI", ...)` and
   `ModelRequestConfig(model_name=..., temperature=..., max_tokens=...)`.
-* Calls async `Model.invoke` from sync code via `asyncio.run`. If an event loop
-  is already running, the coroutine runs in a short-lived worker thread with
-  its own loop.
+* One persistent background event loop per client (`loop.run_forever()`).
+  Each `Model` is built on that loop, every `invoke` is submitted via
+  `asyncio.run_coroutine_threadsafe`, and the same loop is reused for all
+  calls and models.
+* `close()` stops the loop and closes cached model resources when an async
+  `aclose`/`close` exists; it is idempotent. Concurrent calls from the runner's
+  thread pool are safe because all work is serialized onto the same loop.
 * Maps `usage_metadata`: `prompt_tokens = input_tokens`,
   `completion_tokens = output_tokens`. If `output_tokens == 0` and
   `reasoning_tokens > 0`, reasoning tokens become the completion count.
@@ -184,6 +193,21 @@ contract.
   `/v1`.
 * The API key is never logged; `repr(client)` omits it.
 * Import or API failures raise `LLMError` with a clear message.
+
+**openjiuwen logging.** Before the first `Model` is created, the adapter calls
+`configure_log_config` from `openjiuwen.core.common.logging.log_config` (the
+version-specific API in 0.1.20.post1) and selects:
+
+* `log_path=/tmp/openjiuwen-logs` (created on demand);
+* `level=WARNING`;
+* file output for `common`, `interface` and `performance` logs;
+* no stdout console handler — any stdout stream handler is removed and
+  WARNING/ERROR records are mirrored to stderr.
+
+This prevents writes to the read-only `/app/logs` and keeps stdout as a single
+JSON object. Log files may be 0 bytes at WARNING when nothing is logged, which
+is normal. The JSON summary is printed before the LLM client is closed, and
+shutdown diagnostics go to stderr.
 
 `build_llm_client(config, backend="auto")` selects the transport:
 
@@ -252,6 +276,54 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend auto
   `task_id`, `type`, `reward`, `status`, `solver`, `tokens`, `duration`,
   `error`, `notes`
 
+## Docker
+
+Build the image (both tags) and run the offline smoke test:
+
+```bash
+bash scripts/build.sh       # builds openjiuwen-hack:latest, tags hack:latest
+bash scripts/run_local.sh   # hardened offline smoke run
+```
+
+The image is `python:3.11-slim-bookworm` with `openjiuwen==0.1.20.post1`.
+Measured size: **1.39 GB**; cold build: **~183 s**; well below the 4 GB limit.
+
+`scripts/run_local.sh` uses the same hardening flags as the final contract with
+`--network none` and `--user "$(id -u):$(id -g)"` so it can write to the
+user-owned example directory. Offline smoke result: 8 tasks, 6 solved, 2 coding
+failed gracefully, **0 tokens**.
+
+The final run command shape (the network name is organizer-specific):
+
+```bash
+TASKS=/path/to/tasks
+
+docker run --rm \
+  --read-only \
+  --tmpfs /tmp:rw,size=2g \
+  -e HOME=/tmp \
+  -e BUDGET=100000 \
+  -e LLM_BASE_URL="$LLM_BASE_URL" \
+  -e LLM_API_KEY="$LLM_API_KEY" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  -v "$TASKS:/data/tasks:rw" \
+  --entrypoint python \
+  hack:latest /app/run_agent.py --tasks-dir /data/tasks
+```
+
+* `--network hack-net` is organizer-specific; add it only if the event
+  environment requires that network.
+* No `/app/logs` tmpfs is required: openJiuwen logs go to
+  `/tmp/openjiuwen-logs` at WARNING.
+* stdout is one JSON object; the `LLM backend:` line and any diagnostics go to
+  stderr.
+
+**Permissions caveat.** The image runs as root, but `--cap-drop ALL` removes
+`CAP_DAC_OVERRIDE`. `/data/tasks` must therefore be writable by uid 0
+(for example `0777`, or owned by root) or the run must use a matching
+`--user`. Otherwise `answer.txt` cannot be created in the task directories.
+
 ## openJiuwen integration
 
 ### Model layer
@@ -298,17 +370,58 @@ API note: the DeepAgent path follows the signatures verified in the
 0.1.20.post1 wheel. It is import-guarded and was not exercised locally because
 `openjiuwen` is not installed in this workspace.
 
+## Tests
+
+The full suite is **113 stdlib unittest tests**, of which **2 are skipped** on
+the host because they require a real `openjiuwen` import. **29 contract tests**
+live under `tests/contract/`.
+
+```bash
+~/.local/bin/python3.11 -m unittest discover -s tests -v
+~/.local/bin/python3.11 -m unittest discover -s tests/contract -v
+```
+
+Contract coverage includes:
+
+* task path/loading and answer-path handling;
+* budget formula, per-task cap, global exhaustion, zero budget;
+* planner ordering with 100 tasks / 20 infeasible;
+* parallel workers and thread safety;
+* `time_limit == 0` (no task attempted) and positive deadlines;
+* end-to-end example runs.
+
+The host unit tests for the openJiuwen client use injected fake models; the
+real SDK path is exercised in the container (see Verification).
+
 ## Verification
+
+Local commands:
 
 ```bash
 ~/.local/bin/python3.11 -m compileall -q .
 ~/.local/bin/python3.11 -m unittest discover -s tests -v
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --dry-run --offline
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --llm-backend stdlib --max-workers 1
+~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --mutation-repair --max-workers 1
 ```
 
-Expected offline result for the examples: 8 tasks, 0 infeasible, 6 solved,
-2 coding tasks failed gracefully, 0 tokens, score 16.
+Verified results:
+
+| Run | Result | Tokens spent | Notes |
+|---|---|---|---|
+| Offline examples | 8 tasks, 0 infeasible, 6 solved, 2 coding failed gracefully | 0 | score 16 |
+| Offline + `--mutation-repair` | 8/8 solved | 0 | score 20 |
+| Live NeuralDeep via stdlib client | 8/8 solved | 1100.5 (prompt 2175, completion 883) | score 20, ~6 s |
+| Live container, explicit `--llm-backend openjiuwen --max-workers 1` | 8/8 solved | 454.3 (prompt 1433, completion 311) | score 20, ~5.3 s; stdout single JSON; stderr only `LLM backend: openjiuwen` |
+| Live container, exact official invocation (`--tasks-dir` only; default auto, max-workers=4) | 8/8 solved | 1162.7 (prompt 2857, completion 877) | score 20, 16.9 s; `llm_backend=openjiuwen`, requested `auto`; 4 proxy calls; `coding_0003` needed 3 repair iterations; concurrency safe, no event-loop error |
+
+The exact official invocation is just:
+
+```bash
+python /app/run_agent.py --tasks-dir /data/tasks
+```
+
+with `BUDGET`, `LLM_BASE_URL` and `LLM_API_KEY` supplied by the environment.
 
 ## Notes and limitations
 
@@ -320,8 +433,14 @@ Expected offline result for the examples: 8 tasks, 0 infeasible, 6 solved,
 * `solutions.json` is rewritten on every task. This is deliberate for
   durability; with 100 tasks the file remains small.
 * The mock proxy is for tests only and makes no network calls.
-* The final image installs `openjiuwen==0.1.20.post1`. This workspace did not
-  have it installed, so the oJ model client and DeepAgent adapter were tested
-  with injected fakes and import guards, not against a live SDK.
+* The live openJiuwen SDK is verified in the container against NeuralDeep,
+  including concurrent calls and the exact auto / 4-worker invocation. Host
+  unit tests still use injected fakes and import guards because the SDK is not
+  installed on the host.
 * The DeepAgent path is implemented but deliberately not wired into the
   default runner; `DeepAgentRuntime.solve()` raises `NotImplementedError`.
+* The openJiuwen logging configuration uses the `configure_log_config` API and
+  keys specific to `openjiuwen==0.1.20.post1`; re-check it when upgrading.
+* The `expected` field is never read by production code; only tests read it as
+  ground truth.
+* Image size is 1.39 GB, cold build ~183 s, and the final run limit is 1 hour.

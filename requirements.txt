@@ -1,0 +1,3 @@
+# Runtime SDK required by the competition. The harness core itself is stdlib-only;
+# do not add other dependencies here unless the harness actually imports them.
+openjiuwen==0.1.20.post1
