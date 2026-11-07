@@ -46,6 +46,8 @@ class FakeModel:
         self.spec = spec
         self.responder = responder
         self.calls: list[tuple[Any, int | None, float | None]] = []
+        self.loop_ids: list[int] = []
+        self.closed = False
 
     async def invoke(
         self,
@@ -54,8 +56,12 @@ class FakeModel:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> FakeAssistant:
+        self.loop_ids.append(id(asyncio.get_running_loop()))
         self.calls.append((messages, max_tokens, temperature))
         return self.responder()
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class RecordingFactory:
@@ -86,9 +92,22 @@ def make_config(**overrides: Any) -> LLMConfig:
 
 
 class OpenJiuwenLLMClientTests(unittest.TestCase):
+    def make_client(
+        self,
+        factory: RecordingFactory | None = None,
+        *,
+        config: LLMConfig | None = None,
+    ) -> OpenJiuwenLLMClient:
+        client = OpenJiuwenLLMClient(
+            config or make_config(),
+            model_factory=factory,
+        )
+        self.addCleanup(client.close)
+        return client
+
     def test_usage_mapping_does_not_double_count_reasoning(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("fixed", FakeUsage(11, 22, 7, 33)))
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
 
         response = client.chat([{"role": "user", "content": "hi"}])
 
@@ -114,7 +133,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
 
     def test_zero_output_tokens_falls_back_to_reasoning(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("thought", FakeUsage(5, 0, 9, 14)))
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
 
         response = client.chat([{"role": "user", "content": "hi"}])
 
@@ -123,7 +142,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
 
     def test_missing_usage_is_estimated(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("hello world", None))
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
 
         response = client.chat([{"role": "user", "content": "hi"}])
 
@@ -133,7 +152,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
 
     def test_model_escalation_and_cache(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2)))
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
 
         client.chat([{"role": "user", "content": "a"}], attempt=0)
         client.chat([{"role": "user", "content": "b"}], attempt=1)
@@ -148,7 +167,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
 
     def test_chat_works_inside_running_event_loop(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("from-thread", FakeUsage(2, 3, 0, 5)))
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
 
         async def scenario() -> str:
             # This must not raise "asyncio.run() cannot be called from a
@@ -157,8 +176,48 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
 
         self.assertEqual(asyncio.run(scenario()), "from-thread")
 
+    def test_chat_reuses_one_background_loop(self) -> None:
+        factory = RecordingFactory(lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2)))
+        client = self.make_client(factory)
+
+        client.chat([{"role": "user", "content": "first"}])
+        client.chat([{"role": "user", "content": "second"}])
+
+        model = factory.models[0]
+        self.assertEqual(len(model.loop_ids), 2)
+        self.assertEqual(model.loop_ids[0], model.loop_ids[1])
+
+    def test_injected_fake_model_still_works(self) -> None:
+        factory = RecordingFactory(lambda: FakeAssistant("injected", FakeUsage(3, 4, 0, 7)))
+        client = self.make_client(factory)
+
+        response = client.chat([{"role": "user", "content": "hi"}])
+
+        self.assertEqual(response.text, "injected")
+        self.assertEqual(len(factory.models), 1)
+
+    def test_close_stops_loop_and_is_idempotent(self) -> None:
+        factory = RecordingFactory(lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2)))
+        client = self.make_client(factory)
+        client.chat([{"role": "user", "content": "hi"}])
+
+        model = factory.models[0]
+        thread = client._loop_thread
+        self.assertIsNotNone(thread)
+        assert thread is not None
+        self.assertTrue(thread.is_alive())
+
+        client.close()
+        self.assertTrue(client.closed)
+        self.assertTrue(model.closed)
+        self.assertFalse(thread.is_alive())
+
+        # Idempotent second close must not raise.
+        client.close()
+        self.assertTrue(client.closed)
+
     def test_import_failure_raises_clear_llm_error(self) -> None:
-        client = OpenJiuwenLLMClient(make_config())
+        client = self.make_client()
         with mock.patch(
             "harness.ojiuwen_llm._load_model_classes",
             side_effect=ImportError("simulated missing openjiuwen"),
@@ -175,7 +234,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
         def factory(spec: ModelSpec) -> BrokenModel:  # noqa: ARG001
             return BrokenModel()
 
-        client = OpenJiuwenLLMClient(make_config(), model_factory=factory)
+        client = self.make_client(factory)
         with self.assertRaises(LLMError) as ctx:
             client.chat([{"role": "user", "content": "hi"}])
         self.assertIn("boom", str(ctx.exception))
@@ -195,7 +254,7 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
         factory = RecordingFactory(lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2)))
         with mock.patch.dict(os.environ, env, clear=False):
             config = LLMConfig.from_env()
-            client = OpenJiuwenLLMClient(config, model_factory=factory)
+            client = self.make_client(factory, config=config)
             client.chat([{"role": "user", "content": "hi"}])
 
         self.assertFalse(client.verify_ssl)
@@ -216,16 +275,16 @@ class OpenJiuwenLLMClientTests(unittest.TestCase):
     def test_missing_base_url_or_key(self) -> None:
         factory = RecordingFactory(lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2)))
         with self.assertRaises(LLMError):
-            OpenJiuwenLLMClient(make_config(base_url=None), model_factory=factory).chat(
+            self.make_client(factory, config=make_config(base_url=None)).chat(
                 [{"role": "user", "content": "hi"}]
             )
         with self.assertRaises(LLMError):
-            OpenJiuwenLLMClient(make_config(api_key=None), model_factory=factory).chat(
+            self.make_client(factory, config=make_config(api_key=None)).chat(
                 [{"role": "user", "content": "hi"}]
             )
 
     def test_repr_does_not_leak_key(self) -> None:
-        client = OpenJiuwenLLMClient(make_config(), model_factory=RecordingFactory(lambda: FakeAssistant()))
+        client = self.make_client(RecordingFactory(lambda: FakeAssistant()))
         self.assertNotIn("not-a-real-key", repr(client))
 
 

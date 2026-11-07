@@ -179,6 +179,13 @@ def main(argv: list[str] | None = None) -> int:
             raise
         return 2
     finally:
+        if llm is not None:
+            close_llm = getattr(llm, "close", None)
+            if callable(close_llm):
+                try:
+                    close_llm()
+                except Exception as exc:  # pragma: no cover - shutdown best effort
+                    logging.getLogger(__name__).warning("failed to close LLM client: %s", exc)
         if proxy is not None:
             proxy.stop()
 

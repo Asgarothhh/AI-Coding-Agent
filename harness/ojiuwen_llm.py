@@ -9,9 +9,15 @@ Design notes
 ------------
 * ``openjiuwen`` is imported lazily, only when the first model is built.  The
   stdlib harness and unit tests never require it.
-* ``asyncio.run`` is used for the normal sync path.  If the caller is already
-  inside an event loop, the coroutine runs in a short-lived worker thread with
-  its own loop so sync callers never deadlock.
+* A single background event-loop thread is started lazily and reused for every
+  model build and every ``invoke``.  The openJiuwen OpenAI client caches an
+  ``AsyncOpenAI`` instance bound to the loop that created it, so using one
+  persistent loop avoids ``RuntimeError: Event loop is closed`` on the second
+  call.
+* openJiuwen's global logging is reconfigured before the SDK initializes:
+  logs go to ``/tmp/openjiuwen-logs``, console output is suppressed, and
+  WARNING+ records are mirrored to stderr.  This keeps stdout clean for the
+  final JSON summary and prevents writes to the read-only ``/app/logs``.
 * Usage is mapped from ``AssistantMessage.usage_metadata``:
   ``prompt_tokens = input_tokens``, ``completion_tokens = output_tokens``.
   If ``output_tokens`` is zero but ``reasoning_tokens`` is positive, the
@@ -27,6 +33,7 @@ import inspect
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -50,6 +57,12 @@ __all__ = [
 ]
 
 log = logging.getLogger(__name__)
+
+# The final container rootfs is read-only and has no /app/logs tmpfs.  Keep
+# SDK logs on the writable /tmp mount.
+OPENJIUWEN_LOG_DIR = "/tmp/openjiuwen-logs"
+_LOGGING_CONFIG_LOCK = threading.Lock()
+_LOGGING_CONFIGURED = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +114,96 @@ def _parse_extra_body(raw: str | None) -> dict[str, Any] | None:
     return value
 
 
+def _configure_openjiuwen_logging() -> bool:
+    """Point openJiuwen logging at /tmp before the SDK initializes.
+
+    The default SDK config uses ``log_path="./logs/"`` and
+    ``log_file="run/jiuwen.log"``, which resolves to ``/app/logs/...`` in the
+    final image.  The rootfs is read-only, so configure the global in-memory
+    logging config first:
+
+    * files under ``/tmp/openjiuwen-logs``;
+    * WARNING level;
+    * no console handler on stdout (the harness stdout must stay JSON-only);
+    * WARNING+ mirrored to stderr, so real errors remain visible.
+
+    Returns ``True`` when openJiuwen's logging API was found and configured.
+    """
+
+    global _LOGGING_CONFIGURED
+
+    with _LOGGING_CONFIG_LOCK:
+        if _LOGGING_CONFIGURED:
+            return True
+
+        try:
+            from openjiuwen.core.common.logging.log_config import (  # type: ignore[import-not-found]
+                configure_log_config,
+            )
+        except ImportError:
+            return False
+
+        file_output = True
+        try:
+            os.makedirs(OPENJIUWEN_LOG_DIR, exist_ok=True)
+        except OSError as exc:
+            file_output = False
+            log.warning("cannot create openJiuwen log dir %s: %s", OPENJIUWEN_LOG_DIR, exc)
+
+        outputs = ["file"] if file_output else []
+        config = {
+            "backend": "default",
+            "level": "WARNING",
+            "log_path": OPENJIUWEN_LOG_DIR,
+            "output": outputs,
+            "interface_output": list(outputs),
+            "performance_output": list(outputs),
+            "propagate": True,
+        }
+
+        try:
+            configure_log_config(config)
+        except Exception as exc:  # noqa: BLE001 - keep the harness alive
+            log.error("failed to configure openJiuwen logging: %s", exc)
+            return False
+
+        # Force the built-in loggers to materialize under the new config, then
+        # remove any stdout console handlers and add a stderr mirror.
+        try:
+            from openjiuwen.core.common.logging.manager import (  # type: ignore[import-not-found]
+                LogManager,
+            )
+
+            wrappers = list(LogManager.get_all_loggers().values())
+        except Exception as exc:  # noqa: BLE001 - logging is best-effort
+            log.warning("could not inspect openJiuwen loggers: %s", exc)
+            wrappers = []
+
+        formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+
+        def mirror_to_stderr(target: logging.Logger | None) -> None:
+            if target is None:
+                return
+            target.setLevel(logging.WARNING)
+            target.propagate = False
+            for handler in list(target.handlers):
+                if getattr(handler, "stream", None) is sys.stdout:
+                    target.removeHandler(handler)
+            if not any(getattr(handler, "_techlb_stderr", False) for handler in target.handlers):
+                handler = logging.StreamHandler(stream=sys.stderr)
+                handler.setLevel(logging.WARNING)
+                handler.setFormatter(formatter)
+                handler._techlb_stderr = True  # type: ignore[attr-defined]
+                target.addHandler(handler)
+
+        for wrapper in wrappers:
+            mirror_to_stderr(getattr(wrapper, "_logger", None))
+        mirror_to_stderr(logging.getLogger("openjiuwen"))
+
+        _LOGGING_CONFIGURED = True
+        return True
+
+
 def _load_model_classes() -> tuple[Any, Any, Any]:
     """Import the real openJiuwen classes lazily.
 
@@ -118,6 +221,8 @@ def _load_model_classes() -> tuple[Any, Any, Any]:
 
 
 def _default_model_factory(spec: ModelSpec) -> Any:
+    # Must run before Model/SDK logging initializes.
+    _configure_openjiuwen_logging()
     try:
         model_cls, client_config_cls, request_config_cls = _load_model_classes()
     except ImportError as exc:
@@ -153,31 +258,6 @@ def _default_model_factory(spec: ModelSpec) -> Any:
         raise LLMError(
             f"failed to construct openJiuwen Model: {type(exc).__name__}: {exc}"
         ) from exc
-
-
-# -- async bridge -------------------------------------------------------------
-def _run_async(factory: Callable[[], Awaitable[Any]]) -> Any:
-    """Run ``factory()`` from sync code, even inside a running event loop."""
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    box: dict[str, Any] = {}
-
-    def runner() -> None:
-        try:
-            box["result"] = asyncio.run(factory())
-        except BaseException as exc:  # noqa: BLE001 - re-raised in caller thread
-            box["error"] = exc
-
-    thread = threading.Thread(target=runner, name="openjiuwen-llm", daemon=True)
-    thread.start()
-    thread.join()
-    if "error" in box:
-        raise box["error"]
-    return box.get("result")
 
 
 # -- message / response helpers ----------------------------------------------
@@ -261,6 +341,10 @@ class OpenJiuwenLLMClient:
         )
         self._models: dict[str, Any] = {}
         self._models_lock = threading.RLock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._loop_thread: threading.Thread | None = None
+        self._loop_lock = threading.RLock()
+        self._closed = False
 
     @classmethod
     def from_env(cls, **kwargs: Any) -> "OpenJiuwenLLMClient":
@@ -281,6 +365,137 @@ class OpenJiuwenLLMClient:
     @property
     def extra_body(self) -> Mapping[str, Any] | None:
         return self._extra_body
+
+    @property
+    def closed(self) -> bool:
+        with self._loop_lock:
+            return self._closed
+
+    # -- persistent background event loop ------------------------------------
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """Start (once) and return the client's background event loop."""
+
+        with self._loop_lock:
+            if self._closed:
+                raise LLMError("OpenJiuwenLLMClient is closed")
+
+            loop = self._loop
+            if loop is not None and loop.is_running():
+                return loop
+
+            loop = asyncio.new_event_loop()
+            ready = threading.Event()
+
+            def runner() -> None:
+                asyncio.set_event_loop(loop)
+                loop.call_soon(ready.set)
+                try:
+                    loop.run_forever()
+                finally:
+                    pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        try:
+                            loop.run_until_complete(
+                                asyncio.gather(*pending, return_exceptions=True)
+                            )
+                        except Exception:  # pragma: no cover - shutdown best effort
+                            pass
+
+            thread = threading.Thread(
+                target=runner,
+                name="openjiuwen-llm-loop",
+                daemon=True,
+            )
+            thread.start()
+            if not ready.wait(timeout=10.0):
+                try:
+                    loop.close()
+                except Exception:
+                    pass
+                raise LLMError("failed to start openJiuwen background event loop")
+
+            self._loop = loop
+            self._loop_thread = thread
+            return loop
+
+    def _submit(self, coro: Awaitable[Any]) -> Any:
+        """Run a coroutine on the persistent loop and wait for its result."""
+
+        try:
+            loop = self._ensure_loop()
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+        except BaseException:
+            if inspect.iscoroutine(coro):
+                coro.close()
+            raise
+        return future.result()
+
+    def _build_model(self, spec: ModelSpec) -> Any:
+        async def build() -> Any:
+            return self._model_factory(spec)
+
+        return self._submit(build())
+
+    def _close_model(self, model: Any, loop: asyncio.AbstractEventLoop) -> None:
+        targets: list[Any] = []
+        seen: set[int] = set()
+        for target in (model, getattr(model, "_client", None)):
+            if target is None or id(target) in seen:
+                continue
+            seen.add(id(target))
+            targets.append(target)
+
+        for target in targets:
+            closer = getattr(target, "aclose", None) or getattr(target, "close", None)
+            if not callable(closer):
+                continue
+            try:
+                result = closer()
+                if inspect.isawaitable(result):
+                    future = asyncio.run_coroutine_threadsafe(result, loop)
+                    future.result(timeout=30.0)
+            except Exception as exc:  # noqa: BLE001 - close is best effort
+                log.warning("failed to close openJiuwen model resource: %s", exc)
+
+    def close(self) -> None:
+        """Stop the background loop and close cached models.  Idempotent."""
+
+        with self._loop_lock:
+            if self._closed:
+                return
+            self._closed = True
+            loop = self._loop
+            thread = self._loop_thread
+            models = list(self._models.values())
+            self._models.clear()
+            self._loop = None
+            self._loop_thread = None
+
+        if loop is None:
+            return
+
+        for model in models:
+            self._close_model(model, loop)
+
+        if thread is not None and thread is threading.current_thread():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except Exception:
+                pass
+            return
+
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except Exception:
+            pass
+        if thread is not None:
+            thread.join(timeout=10.0)
+        try:
+            loop.close()
+        except Exception:
+            pass
 
     def resolve_model(self, attempt: int = 0, override: str | None = None) -> str:
         if override:
@@ -312,7 +527,7 @@ class OpenJiuwenLLMClient:
         with self._models_lock:
             model = self._models.get(name)
             if model is None:
-                model = self._model_factory(self._make_spec(name))
+                model = self._build_model(self._make_spec(name))
                 self._models[name] = model
             return model
 
@@ -359,7 +574,7 @@ class OpenJiuwenLLMClient:
 
         started = time.perf_counter()
         try:
-            assistant = _run_async(invoke)
+            assistant = self._submit(invoke())
         except LLMError:
             raise
         except Exception as exc:
