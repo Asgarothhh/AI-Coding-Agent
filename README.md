@@ -367,8 +367,9 @@ implement `DeepAgentRuntime.solve()` and route selected task types through the
 same `harness.store` and `harness.budget` abstractions.
 
 API note: the DeepAgent path follows the signatures verified in the
-0.1.20.post1 wheel. It is import-guarded and was not exercised locally because
-`openjiuwen` is not installed in this workspace.
+0.1.20.post1 wheel. It is import-guarded and has not been exercised end to end;
+the model layer and its logging were verified in the container against the live
+proxy, but `DeepAgentRuntime.solve()` is still not wired into the default runner.
 
 ## Tests
 
