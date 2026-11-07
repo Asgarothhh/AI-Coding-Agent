@@ -14,8 +14,15 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
-from harness.llm import DEFAULT_MODEL, ESCALATION_MODEL, LLMClient, LLMConfig
+from harness.llm import (
+    DEFAULT_MODEL,
+    ESCALATION_MODEL,
+    LLMClient,
+    LLMConfig,
+    build_llm_client,
+)
 from harness.mock_proxy import MockProxyServer
 from harness.runner import RunOptions, run
 
@@ -48,9 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-iterations", type=int, default=6, help="max LLM repair iterations for coding (default: 6)")
     parser.add_argument("--mutation-repair", action="store_true", help="enable tiny deterministic mutation repair for coding")
     parser.add_argument("--test-timeout", type=float, default=60.0, help="per-test-file timeout in seconds (default: 60)")
-    parser.add_argument("--max-tokens", type=int, default=1024, help="maximum completion tokens per LLM call (default: 1024)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"default model (default: {DEFAULT_MODEL})")
-    parser.add_argument("--escalation-model", default=ESCALATION_MODEL, help=f"escalation model (default: {ESCALATION_MODEL})")
+    parser.add_argument("--max-tokens", type=int, default=None, help="maximum completion tokens per LLM call (default: $LLM_MAX_TOKENS or 1024)")
+    parser.add_argument(
+        "--llm-backend",
+        choices=("auto", "stdlib", "openjiuwen"),
+        default="auto",
+        help="LLM transport backend: auto (default), stdlib urllib, or openjiuwen",
+    )
+    parser.add_argument("--model", default=None, help=f"default model (default: $LLM_MODEL or {DEFAULT_MODEL})")
+    parser.add_argument("--escalation-model", default=None, help=f"escalation model (default: $LLM_ESCALATION_MODEL or {ESCALATION_MODEL})")
     parser.add_argument("--dry-run", action="store_true", help="print the plan and exit without solving")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--mock-llm", action="store_true", help="start a local mock OpenAI-compatible proxy")
@@ -74,8 +87,6 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--time-limit must be >= 0")
     if not 0.0 <= args.triage_threshold <= 1.0:
         parser.error("--triage-threshold must be within [0, 1]")
-    if args.max_tokens < 1:
-        parser.error("--max-tokens must be >= 1")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
@@ -84,8 +95,22 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     budget = args.budget if args.budget is not None else _env_float("BUDGET", 100_000.0)
+    model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    escalation_model = (
+        args.escalation_model
+        or os.environ.get("LLM_ESCALATION_MODEL")
+        or ESCALATION_MODEL
+    )
+    max_tokens = (
+        args.max_tokens
+        if args.max_tokens is not None
+        else int(_env_float("LLM_MAX_TOKENS", 1024))
+    )
+    if max_tokens < 1:
+        parser.error("--max-tokens/LLM_MAX_TOKENS must be >= 1")
     proxy: MockProxyServer | None = None
-    llm: LLMClient | None = None
+    llm: Any = None
+    chosen_backend = "offline" if args.offline else ("stdlib-mock" if args.mock_llm else args.llm_backend)
 
     try:
         if args.mock_llm:
@@ -95,27 +120,30 @@ def main(argv: list[str] | None = None) -> int:
                 LLMConfig(
                     base_url=proxy.base_url,
                     api_key="mock-key",
-                    model=args.model,
-                    escalation_model=args.escalation_model,
-                    max_tokens=args.max_tokens,
+                    model=model,
+                    escalation_model=escalation_model,
+                    max_tokens=max_tokens,
                     timeout=30.0,
                     max_retries=1,
                     backoff_base=0.05,
                 )
             )
+            chosen_backend = "stdlib-mock"
         elif not args.offline:
-            llm = LLMClient(
-                LLMConfig.from_env(
-                    model=args.model,
-                    escalation_model=args.escalation_model,
-                    max_tokens=args.max_tokens,
-                )
+            config = LLMConfig.from_env(
+                model=model,
+                escalation_model=escalation_model,
+                max_tokens=max_tokens,
             )
-            if not llm.available:
+            llm = build_llm_client(config, backend=args.llm_backend)
+            chosen_backend = getattr(llm, "backend_name", args.llm_backend)
+            if not getattr(llm, "available", False):
                 print(
-                    "warning: LLM_BASE_URL is not set; coding tasks will fail without an LLM",
+                    "warning: LLM_BASE_URL/LLM_API_KEY are not set; coding tasks will fail without an LLM",
                     file=sys.stderr,
                 )
+
+        print(f"LLM backend: {chosen_backend}", file=sys.stderr)
 
         options = RunOptions(
             tasks_dir=tasks_dir,
@@ -129,15 +157,17 @@ def main(argv: list[str] | None = None) -> int:
             max_iterations=args.max_iterations,
             mutation_repair=args.mutation_repair,
             test_timeout=args.test_timeout,
-            max_tokens=args.max_tokens,
+            max_tokens=max_tokens,
             dry_run=args.dry_run,
             offline=args.offline,
             verbose=args.verbose,
-            model=args.model,
-            escalation_model=args.escalation_model,
+            model=model,
+            escalation_model=escalation_model,
             llm=llm,
         )
         summary = run(options)
+        summary["llm_backend"] = chosen_backend
+        summary["llm_backend_requested"] = args.llm_backend
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return 0
     except KeyboardInterrupt:

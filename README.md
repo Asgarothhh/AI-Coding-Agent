@@ -1,6 +1,9 @@
 # openJiuwen Challenge 2026 — budget-aware harness MVP
 
-A stdlib-only Python 3.11 harness skeleton for the final challenge contract:
+A Python 3.11 harness with a stdlib-only core and an optional openJiuwen
+model layer. The final image installs `openjiuwen==0.1.20.post1`
+(`requirements-openjiuwen.txt`); `--llm-backend auto` uses it when present and
+falls back to the stdlib urllib client otherwise.
 
 ```bash
 python /app/run_agent.py --tasks-dir /data/tasks
@@ -34,7 +37,8 @@ run_agent.py                     CLI entry point
 harness/
   task.py                        Task dataclass, BOM-safe load_tasks()
   budget.py                      thread-safe cost accounting + hard stop
-  llm.py                         urllib OpenAI-compatible client, retries
+  llm.py                         stdlib urllib client + backend factory
+  ojiuwen_llm.py                 openJiuwen Model adapter (async -> sync)
   triage.py                      zero-LLM infeasibility scoring
   planner.py                     heuristic cost estimate + deterministic-first plan
   solvers/
@@ -47,7 +51,8 @@ harness/
   runner.py                      orchestration, ThreadPoolExecutor, summary
   trace.py                       JSONL trace
   mock_proxy.py                  local OpenAI-compatible proxy for tests
-  ojiuwen_runtime.py             optional openJiuwen/workswarm adapter
+  ojiuwen_runtime.py             optional DeepAgent adapter (build_agent/run_query)
+requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
 tests/                           stdlib unittest suite
 examples/task-dir/               eight official examples
 ```
@@ -141,7 +146,13 @@ official non-coding examples.
 Test files are never patched; if they change on disk they are restored from
 the snapshot before the solver gives up.
 
-### LLM client
+### LLM backends
+
+Two interchangeable clients implement the same
+`chat(messages, *, model, max_tokens, temperature, attempt) -> LLMResponse`
+contract.
+
+**stdlib** (`harness/llm.py`, `LLMClient`)
 
 * `urllib.request` only; no SDK dependency.
 * OpenAI-compatible `POST /v1/chat/completions`.
@@ -151,6 +162,48 @@ the snapshot before the solver gives up.
   after a configurable number of attempts.
 * Usage is parsed from the response; if missing, a deterministic character
   estimate is used and marked `estimated=True`.
+
+**openjiuwen** (`harness/ojiuwen_llm.py`, `OpenJiuwenLLMClient`)
+
+* Lazy import of `openjiuwen.core.foundation.llm.Model`; the stdlib harness
+  and tests do not require the SDK.
+* Builds `Model` from `ModelClientConfig(client_provider="OpenAI", ...)` and
+  `ModelRequestConfig(model_name=..., temperature=..., max_tokens=...)`.
+* Calls async `Model.invoke` from sync code via `asyncio.run`. If an event loop
+  is already running, the coroutine runs in a short-lived worker thread with
+  its own loop.
+* Maps `usage_metadata`: `prompt_tokens = input_tokens`,
+  `completion_tokens = output_tokens`. If `output_tokens == 0` and
+  `reasoning_tokens > 0`, reasoning tokens become the completion count.
+  Reasoning is not added twice.
+* Same default/escalation model policy as the stdlib client.
+* Honours `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`,
+  `LLM_ESCALATION_MODEL`, `LLM_MAX_TOKENS`, `LLM_TEMPERATURE`, `LLM_TIMEOUT`,
+  `LLM_VERIFY_SSL` (default true), and optional `OJ_EXTRA_BODY` (JSON object).
+* `api_base` is passed to the SDK verbatim; the SDK does **not** append
+  `/v1`.
+* The API key is never logged; `repr(client)` omits it.
+* Import or API failures raise `LLMError` with a clear message.
+
+`build_llm_client(config, backend="auto")` selects the transport:
+
+* `stdlib` — always `LLMClient`;
+* `openjiuwen` — `OpenJiuwenLLMClient`, or `LLMError` when the package is not
+  installed;
+* `auto` — openJiuwen when `importlib.util.find_spec("openjiuwen")` succeeds,
+  otherwise stdlib.
+
+The chosen backend is printed on stderr and echoed in the final JSON summary as
+`llm_backend`.
+
+Example openJiuwen configuration:
+
+```bash
+export LLM_BASE_URL="http://proxy/v1"
+export LLM_API_KEY="..."
+export OJ_EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
+python run_agent.py --tasks-dir /data/tasks --llm-backend auto
+```
 
 ### Runner
 
@@ -179,6 +232,7 @@ the snapshot before the solver gives up.
 --mutation-repair         enable deterministic coding mutation search
 --test-timeout FLOAT      per test file (default 60)
 --max-tokens INT          completion cap per LLM call (default 1024)
+--llm-backend CHOICE      auto | stdlib | openjiuwen (default auto)
 --model STR               default model
 --escalation-model STR    escalation model
 --dry-run                 plan + JSON summary, no solving
@@ -200,15 +254,49 @@ the snapshot before the solver gives up.
 
 ## openJiuwen integration
 
-`harness/ojiuwen_runtime.py` exposes:
+### Model layer
 
-```python
-runtime = build_runtime()   # None when openjiuwen/workswarm is not installed
+`--llm-backend auto` (default) uses `harness/ojiuwen_llm.py` when openJiuwen
+is installed. The final image installs:
+
+```text
+openjiuwen==0.1.20.post1
 ```
 
-The adapter is intentionally a placeholder and never a hard dependency. The
-MVP harness uses its own solvers; a future integration can implement
-`AgentRuntime.solve()` and route selected task types through it.
+from `requirements-openjiuwen.txt`. No local installation is required for the
+stdlib tests; the adapter imports the SDK lazily.
+
+### DeepAgent path (next iteration)
+
+`harness/ojiuwen_runtime.py` is an optional, import-guarded DeepAgent adapter
+for openJiuwen 0.1.20.post1. It is **not wired into the default runner yet**;
+the deterministic/stdlib solvers remain the production path.
+
+```python
+from harness.ojiuwen_runtime import build_runtime, build_agent, run_query
+
+runtime = build_runtime()          # None when openjiuwen is absent
+agent = build_agent(system_prompt="...", tools=[], max_rounds=20)
+output, usage = await run_query(
+    query="...",
+    system_prompt="...",
+    tools=[],
+    run_id="task-1",
+)
+# usage: input_tokens / output_tokens / prompt_tokens / completion_tokens /
+#        reasoning_tokens / total_tokens / model_calls
+```
+
+The adapter uses `create_deep_agent`, `AgentCard`, `create_agent_session`,
+`TaskCompletionRail`, `MaxRoundsEvaluator` and `TimeoutEvaluator`. A custom
+rail accumulates usage on `AgentCallbackEvent.AFTER_MODEL_CALL`; `run_query`
+returns the final output plus that usage dict. A future runner integration can
+implement `DeepAgentRuntime.solve()` and route selected task types through the
+same `harness.store` and `harness.budget` abstractions.
+
+API note: the DeepAgent path follows the signatures verified in the
+0.1.20.post1 wheel. It is import-guarded and was not exercised locally because
+`openjiuwen` is not installed in this workspace.
 
 ## Verification
 
@@ -216,7 +304,7 @@ MVP harness uses its own solvers; a future integration can implement
 ~/.local/bin/python3.11 -m compileall -q .
 ~/.local/bin/python3.11 -m unittest discover -s tests -v
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --dry-run --offline
-~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --max-workers 1
+~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --llm-backend stdlib --max-workers 1
 ```
 
 Expected offline result for the examples: 8 tasks, 0 infeasible, 6 solved,
@@ -232,3 +320,8 @@ Expected offline result for the examples: 8 tasks, 0 infeasible, 6 solved,
 * `solutions.json` is rewritten on every task. This is deliberate for
   durability; with 100 tasks the file remains small.
 * The mock proxy is for tests only and makes no network calls.
+* The final image installs `openjiuwen==0.1.20.post1`. This workspace did not
+  have it installed, so the oJ model client and DeepAgent adapter were tested
+  with injected fakes and import guards, not against a live SDK.
+* The DeepAgent path is implemented but deliberately not wired into the
+  default runner; `DeepAgentRuntime.solve()` raises `NotImplementedError`.

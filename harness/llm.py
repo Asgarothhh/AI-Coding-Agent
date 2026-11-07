@@ -8,6 +8,7 @@ transient failures with exponential backoff, and always reports usage so the
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ __all__ = [
     "LLMError",
     "LLMResponse",
     "LLMUsage",
+    "build_llm_client",
     "chat_endpoint",
     "model_for_attempt",
 ]
@@ -144,6 +146,8 @@ def _estimate_tokens(text: str) -> int:
 
 
 class LLMClient:
+    backend_name = "stdlib"
+
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
@@ -267,6 +271,62 @@ class LLMClient:
                 raise LLMError(f"LLM proxy returned invalid JSON: {exc}") from exc
 
         raise last_error or LLMError("LLM request failed for an unknown reason")
+
+
+def _openjiuwen_available() -> bool:
+    """Return True when the openjiuwen package can be found.
+
+    ``find_spec`` is intentionally used instead of importing the heavy SDK at
+    startup.  The actual import happens lazily in
+    :class:`harness.ojiuwen_llm.OpenJiuwenLLMClient`.
+    """
+
+    try:
+        return importlib.util.find_spec("openjiuwen") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def build_llm_client(config: LLMConfig, backend: str = "auto") -> Any:
+    """Build the configured LLM client.
+
+    ``backend`` is one of ``auto``, ``stdlib`` or ``openjiuwen``.  ``auto``
+    selects openJiuwen when the package is importable and otherwise falls back
+    to the stdlib urllib client.  The chosen backend is logged without secrets.
+    """
+
+    choice = (backend or "auto").strip().lower()
+
+    if choice == "stdlib":
+        log.info("LLM backend: stdlib")
+        return LLMClient(config)
+
+    if choice == "openjiuwen":
+        if not _openjiuwen_available():
+            raise LLMError(
+                "openjiuwen backend requested but openjiuwen is not installed; "
+                "install openjiuwen==0.1.20.post1 (requirements-openjiuwen.txt) "
+                "or use --llm-backend stdlib"
+            )
+        from .ojiuwen_llm import OpenJiuwenLLMClient
+
+        client = OpenJiuwenLLMClient(config)
+        log.info("LLM backend: openjiuwen")
+        return client
+
+    if choice == "auto":
+        if _openjiuwen_available():
+            from .ojiuwen_llm import OpenJiuwenLLMClient
+
+            client = OpenJiuwenLLMClient(config)
+            log.info("LLM backend: openjiuwen (auto; openjiuwen is installed)")
+            return client
+        log.info("LLM backend: stdlib (auto; openjiuwen is not installed)")
+        return LLMClient(config)
+
+    raise ValueError(
+        f"unknown LLM backend {backend!r}; expected one of auto, stdlib, openjiuwen"
+    )
 
 
 def _normalise_messages(
