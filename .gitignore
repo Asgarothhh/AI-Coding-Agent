@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs / OS noise
+*.log
+.DS_Store
+
+# Runtime outputs
+out/
+/solutions.json
+/trace.jsonl
+
+# Locally generated answers for the bundled examples
+examples/task-dir/*/answer.txt
+examples/task-dir/*/workspace/answer.txt
