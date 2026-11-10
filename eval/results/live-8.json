@@ -1,0 +1,251 @@
+{
+  "dry_run": false,
+  "offline": false,
+  "tasks_dir": "/data/tasks",
+  "out": "/tmp/openjiuwen-out",
+  "solutions_path": "/tmp/openjiuwen-out/solutions.json",
+  "trace_path": "/tmp/openjiuwen-out/trace.jsonl",
+  "tasks": 8,
+  "planned": 8,
+  "infeasible": 0,
+  "policy": "value_cost_greedy",
+  "planner": {
+    "policy": "value_cost_greedy",
+    "total": 8,
+    "feasible": 8,
+    "accepted": 8,
+    "coverage": 1.0,
+    "planned_cost": 25995.8,
+    "expected_reward": 17.2,
+    "time_used": 155.2,
+    "reasons": {
+      "accept": 8
+    },
+    "rejected": 0,
+    "reserve": 5000.0
+  },
+  "estimator": {
+    "model": "qwen3.6-35b-a3b-noreason",
+    "total": 8,
+    "variant": {
+      "deterministic": 6,
+      "heuristic": 0,
+      "calibration": 2
+    },
+    "confidence": {
+      "high": 6,
+      "medium": 0,
+      "low": 2
+    }
+  },
+  "budget_source": "env:OJ_TOKEN_BUDGET",
+  "budget": {
+    "total": 100000.0,
+    "spent": 461.29999999999995,
+    "reserved": 0.0,
+    "remaining": 99538.7,
+    "prompt_tokens": 1433,
+    "completion_tokens": 318,
+    "stopped": false
+  },
+  "duration": 37.187407,
+  "solved": 8,
+  "skipped": 0,
+  "failed": 0,
+  "errors": 0,
+  "score": 20.0,
+  "tokens_spent": 461.3,
+  "prompt_tokens": 1433,
+  "completion_tokens": 318,
+  "model": "qwen3.6-35b-a3b-noreason",
+  "stop_reason": null,
+  "replans": 7,
+  "per_type": {
+    "coding": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 461.29999999999995,
+      "reward_solved": 4.0
+    },
+    "data_analysis": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 6.0
+    },
+    "math": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 7.0
+    },
+    "search": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 3.0
+    }
+  },
+  "results": [
+    {
+      "timestamp": "2026-11-10T19:43:05.485318+00:00",
+      "task_id": "coding_0003",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 257.7,
+      "duration": 6.183394,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/coding_0003/answer.txt",
+        "/data/tasks/coding_0003/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:43:36.473032+00:00",
+      "task_id": "coding_0007",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 203.6,
+      "duration": 30.987009,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/coding_0007/answer.txt",
+        "/data/tasks/coding_0007/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.296082+00:00",
+      "task_id": "data_analysis_0002",
+      "task_type": "data_analysis",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "data_analysis",
+      "answer": "158",
+      "tokens": 0.0,
+      "duration": 0.000528,
+      "notes": "sum units over 4/20 rows in sales.csv (product='widget', months=7..8)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/data_analysis_0002/answer.txt",
+        "/data/tasks/data_analysis_0002/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.297444+00:00",
+      "task_id": "data_analysis_0006",
+      "task_type": "data_analysis",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "data_analysis",
+      "answer": "284",
+      "tokens": 0.0,
+      "duration": 0.000956,
+      "notes": "sum units over 11/300 rows in sales.csv (product='widget', months=5..6)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/data_analysis_0006/answer.txt",
+        "/data/tasks/data_analysis_0006/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.295067+00:00",
+      "task_id": "math_0000",
+      "task_type": "math",
+      "reward": 5.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "math",
+      "answer": "389",
+      "tokens": 0.0,
+      "duration": 0.000591,
+      "notes": "parsed 5 operation(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/math_0000/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.298029+00:00",
+      "task_id": "math_0004",
+      "task_type": "math",
+      "reward": 2.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "math",
+      "answer": "1735",
+      "tokens": 0.0,
+      "duration": 0.00018,
+      "notes": "parsed 2 operation(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/math_0004/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.301528+00:00",
+      "task_id": "search_0001",
+      "task_type": "search",
+      "reward": 1.0,
+      "check": "exact_str",
+      "status": "solved",
+      "solver": "search",
+      "answer": "1983",
+      "tokens": 0.0,
+      "duration": 0.001321,
+      "notes": "person_irina_smith.md: born",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/search_0001/answer.txt",
+        "/data/tasks/search_0001/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-10T19:42:59.299819+00:00",
+      "task_id": "search_0005",
+      "task_type": "search",
+      "reward": 2.0,
+      "check": "exact_str",
+      "status": "solved",
+      "solver": "search",
+      "answer": "Osaka",
+      "tokens": 0.0,
+      "duration": 0.001458,
+      "notes": "company_fjord_data.md: headquarters via employer='Fjord Data'",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/search_0005/answer.txt",
+        "/data/tasks/search_0005/workspace/answer.txt"
+      ]
+    }
+  ],
+  "llm_backend": "openjiuwen-gateway",
+  "llm_backend_requested": "gateway"
+}

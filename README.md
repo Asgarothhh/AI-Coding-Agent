@@ -63,7 +63,7 @@ harness/
 Dockerfile                       python:3.11-slim image with openjiuwen pinned
 scripts/build.sh                 build hack:latest + openjiuwen-hack:latest
 scripts/run_local.sh             offline hardened smoke run
-scripts/sdk_smoke.py             live gateway smoke check (blocked without credentials)
+scripts/sdk_smoke.py             live gateway smoke (credentials via env)
 requirements.txt                 runtime SDK pin (openjiuwen==0.1.20.post1)
 requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
 tests/                           stdlib unittest suite (250 tests, 2 skipped)
@@ -212,9 +212,11 @@ contract.
   its own.
 * Selected with `--llm-backend gateway`. `auto` remains compatible and keeps
   the existing resolution order.
-* Live smoke is **BLOCKED** on this machine: `scripts/sdk_smoke.py` cannot run
-  because `LLM_BASE_URL` / `LLM_API_KEY` are unset and the SDK is not
-  installed. No successful live v5 run is claimed.
+* Live smoke and live runs are **verified**: `scripts/sdk_smoke.py` reached the
+  organizer proxy for all four aliases, and the container solved 8/8 official
+  tasks and 14/16 extended tasks through this backend (see Verification and
+  `eval/results/live-v5.md`). Credentials were supplied via the environment at
+  run time only; nothing is committed.
 
 **stdlib** (`harness/llm.py`, `LLMClient`)
 
@@ -283,8 +285,8 @@ The chosen backend is printed on stderr and echoed in the final JSON summary as
 Example openJiuwen configuration:
 
 ```bash
-export LLM_BASE_URL="http://proxy/v1"
-export LLM_API_KEY="..."
+export LLM_BASE_URL="$LLM_PROXY_URL"
+export LLM_API_KEY   # value supplied via the environment, never committed
 export OJ_EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
 python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 ```
@@ -354,7 +356,9 @@ bash scripts/run_local.sh   # hardened offline smoke run
 ```
 
 The image is `python:3.11-slim-bookworm` with `openjiuwen==0.1.20.post1`.
-Measured size: **1.39 GB**; cold build: **~183 s**; well below the 4 GB limit.
+Measured size: **1.38 GB** on disk (**292.2 MiB** content); cold build: **1015 s** on
+this host (PyPI ~0.17 MB/s, warm rebuild 0.4 s) — well under the 4 GB image limit, but
+15 s over the 1000 s cold-build limit here.
 
 `scripts/run_local.sh` uses the same hardening flags as the final contract
 (4 CPUs, 16 GB, read-only root, `/tmp` tmpfs 2 GB, `--cap-drop ALL`,
@@ -379,7 +383,7 @@ docker run --rm \
   --memory 16g \
   -e BUDGET="$BUDGET" \
   -e LLM_BASE_URL="$LLM_BASE_URL" \
-  -e LLM_API_KEY="$LLM_API_KEY" \
+  -e "LLM_API_KEY=$LLM_API_KEY" \
   --cap-drop ALL \
   --security-opt no-new-privileges \
   -v "$TASKS:/data/tasks:rw" \
@@ -446,9 +450,9 @@ same `harness.store` and `harness.budget` abstractions.
 
 API note: the DeepAgent path follows the signatures verified in the
 0.1.20.post1 wheel. It is import-guarded and has not been exercised end to end.
-Live model-layer verification is v4 historical (see Verification); v5 gateway
-smoke is blocked. `DeepAgentRuntime.solve()` is still not wired into the default
-runner.
+Live model-layer verification is v5 (see Verification): the gateway path is
+proven with real proxy calls, while the v4 table is historical.
+`DeepAgentRuntime.solve()` is still not wired into the default runner.
 
 ## Extended task set
 
@@ -505,8 +509,9 @@ Contract coverage includes:
 * end-to-end example runs.
 
 The host unit tests for the openJiuwen clients use injected fake models and
-import guards. The v5 live gateway smoke is blocked here (see Verification);
-no successful live v5 run is claimed.
+import guards. The v5 live gateway smoke was also run for real against the
+organizer proxy: all four aliases answered, and the container runs are recorded
+in Verification and `eval/results/live-v5.md`.
 
 ## Verification
 
@@ -519,7 +524,7 @@ Local commands:
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --llm-backend stdlib --max-workers 1
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --mutation-repair --max-workers 1
 ~/.local/bin/python3.11 -m unittest discover -s tests/contract -v
-# scripts/sdk_smoke.py  # BLOCKED here: no LLM_BASE_URL/LLM_API_KEY, SDK absent
+# scripts/sdk_smoke.py  # live: needs LLM_BASE_URL / LLM_API_KEY in env; all 4 aliases OK on 2026-11-10
 ```
 
 Verified v5 results:
@@ -529,6 +534,24 @@ Verified v5 results:
 | Offline examples | 8 tasks, 0 infeasible, 6 solved, 2 coding failed gracefully | 0 | score 16 |
 | Offline + `--mutation-repair` | 8/8 solved | 0 | score 20 |
 | Extended offline set | 16 tasks, 12 solved, 4 failed gracefully | 0 | score 39 |
+
+v5 live runs (gateway backend, `--max-workers 1`, read-only container, budget from
+`OJ_TOKEN_BUDGET=100000`). Details and the redacted command are in
+`eval/results/live-v5.md`; the raw summaries are `eval/results/live-8.json` and
+`eval/results/live-16.json`.
+
+| Live run | Result | Tokens spent | Notes |
+|---|---|---|---|
+| Official 8 tasks | 8 solved, 0 failed, 0 skipped, 0 errors | 461.3 (prompt 1433, completion 318) | score 20; `policy=value_cost_greedy`, `budget_source=env:OJ_TOKEN_BUDGET`, `llm_backend=openjiuwen-gateway` |
+| Extended 16 tasks | 14 solved, 2 failed, 0 skipped, 0 errors | 2350.8 (prompt 7028, completion 1648) | score 47; replans 15; coding 4/4 via LLM, data_analysis 4/4, math 4/4, search 2/4 |
+
+The gateway path is **proven with real proxy calls**: `scripts/sdk_smoke.py` answered
+for all four allowed aliases (`qwen3.8-27b` 2468.3 ms in56/out27/reasoning23;
+`qwen3.8-27b-noreason` 287.7 ms in32/out2; `qwen3.6-35b-a3b` 1194.2 ms in30/out64;
+`qwen3.6-35b-a3b-noreason` 235.3 ms in32/out2), and the official task set solved 8/8
+through the same backend. Credentials were supplied only through
+`LLM_BASE_URL` / `LLM_API_KEY` at run time and are **not committed**; the runs used the
+organizer proxy, so they are reproducible only with organizer credentials.
 
 The v4 live-run table below is **historical**. Those runs used the v4
 stdlib/openjiuwen path, not the v5 gateway, and were **not re-verified in v5**.
@@ -540,9 +563,11 @@ It is kept for reference only.
 | Live container, explicit `--llm-backend openjiuwen --max-workers 1` | 8/8 solved | 454.3 (prompt 1433, completion 311) | score 20, ~5.3 s; stdout single JSON; stderr only `LLM backend: openjiuwen` |
 | Live container, exact official invocation (`--tasks-dir` only; default auto, max-workers=4) | 8/8 solved | 1162.7 (prompt 2857, completion 877) | score 20, 16.9 s; `llm_backend=openjiuwen`, requested `auto`; 4 proxy calls; `coding_0003` needed 3 repair iterations; concurrency safe, no event-loop error |
 
-v5 live smoke is blocked on this machine: `scripts/sdk_smoke.py` needs
-`LLM_BASE_URL`, `LLM_API_KEY` and the installed SDK. No successful v5 live run
-is claimed.
+Measured v5 live result: 8/8 official tasks solved for score 20 and 14/16 extended
+tasks for score 47, with 0 errors. `search_0006` and `search_0007` remain the only
+extended-set failures (multi-hop relation chains; no `answer.txt` is written for them).
+Credentials are not committed; the runs used the organizer proxy with
+`LLM_BASE_URL` / `LLM_API_KEY` from the environment.
 
 The exact official invocation is just:
 
@@ -564,12 +589,15 @@ with `BUDGET`, `LLM_BASE_URL` and `LLM_API_KEY` supplied by the environment.
 * The mock proxy is for tests only and makes no network calls.
 * The v4 live openJiuwen/NeuralDeep runs in the historical table are kept for
   reference and were not re-verified in v5. Host unit tests use injected fakes
-  and import guards; v5 gateway smoke is blocked because the SDK and
-  credentials are absent here.
+  and import guards. v5 live runs used the real gateway against the organizer
+  proxy; credentials came from the environment and are not committed.
 * The DeepAgent path is implemented but deliberately not wired into the
   default runner; `DeepAgentRuntime.solve()` raises `NotImplementedError`.
 * The openJiuwen logging configuration uses the `configure_log_config` API and
   keys specific to `openjiuwen==0.1.20.post1`; re-check it when upgrading.
 * The `expected` field is never read by production code; only tests read it as
   ground truth.
-* Image size is 1.39 GB, cold build ~183 s, and the final run limit is 1 hour.
+* Image size is **1.38 GB** on disk (**292.2 MiB** content) and a cold build takes
+  **1015 s** on this host (PyPI throughput ~0.17 MB/s; warm rebuild 0.4 s). That is
+  well under the 4 GB image limit but 15 s over the 1000 s cold-build limit on this
+  host, so the cold-build limit remains a residual risk.

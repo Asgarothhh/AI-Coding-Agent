@@ -1,12 +1,188 @@
 {
-  "status": "blocked",
-  "reason": "no LLM_BASE_URL/LLM_API_KEY",
-  "generated_at": "2026-11-10T18:44:16.522622+00:00",
+  "status": "ok",
+  "generated_at": "2026-11-10T19:44:41.085993+00:00",
+  "sdk": "openjiuwen==0.1.20.post1",
+  "client_provider": "OpenAI",
+  "verify_ssl": true,
+  "max_output_tokens": 64,
   "models": [
     "qwen3.8-27b",
     "qwen3.8-27b-noreason",
     "qwen3.6-35b-a3b",
     "qwen3.6-35b-a3b-noreason"
   ],
-  "results": []
+  "results": [
+    {
+      "model": "qwen3.8-27b",
+      "status": "ok",
+      "latency_ms": 2468.3,
+      "text_preview": "\n\nOK",
+      "usage": {
+        "input_tokens": 56,
+        "output_tokens": 27,
+        "reasoning_tokens": 23,
+        "total_cost": 32.6,
+        "source_fields": [
+          "input_tokens",
+          "output_tokens",
+          "reasoning_tokens"
+        ]
+      },
+      "raw_usage": {
+        "code": 0,
+        "err_msg": "",
+        "prompt": "",
+        "task_id": "",
+        "model_name": "qwen3.8-27b",
+        "total_latency": 0.0,
+        "first_token_time": "",
+        "request_start_time": "",
+        "input_tokens": 56,
+        "output_tokens": 27,
+        "total_tokens": 83,
+        "cache_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_miss_tokens": null,
+        "cache_write_tokens": null,
+        "cache_status": "observed",
+        "cache_source": "provider_usage",
+        "cache_authoritative": true,
+        "cache_creation_input_tokens": null,
+        "reasoning_tokens": 23,
+        "input_cost": 0.0,
+        "output_cost": 0.0,
+        "total_cost": 0.0
+      },
+      "reasoning_fields_present": true
+    },
+    {
+      "model": "qwen3.8-27b-noreason",
+      "status": "ok",
+      "latency_ms": 287.7,
+      "text_preview": "OK",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "reasoning_tokens": 0,
+        "total_cost": 5.2,
+        "source_fields": [
+          "input_tokens",
+          "output_tokens",
+          "reasoning_tokens"
+        ]
+      },
+      "raw_usage": {
+        "code": 0,
+        "err_msg": "",
+        "prompt": "",
+        "task_id": "",
+        "model_name": "qwen3.8-27b-noreason",
+        "total_latency": 0.0,
+        "first_token_time": "",
+        "request_start_time": "",
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "total_tokens": 34,
+        "cache_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_miss_tokens": null,
+        "cache_write_tokens": null,
+        "cache_status": "observed",
+        "cache_source": "provider_usage",
+        "cache_authoritative": true,
+        "cache_creation_input_tokens": null,
+        "reasoning_tokens": 0,
+        "input_cost": 0.0,
+        "output_cost": 0.0,
+        "total_cost": 0.0
+      },
+      "reasoning_fields_present": true
+    },
+    {
+      "model": "qwen3.6-35b-a3b",
+      "status": "ok",
+      "latency_ms": 1194.2,
+      "text_preview": "",
+      "usage": {
+        "input_tokens": 30,
+        "output_tokens": 64,
+        "reasoning_tokens": 0,
+        "total_cost": 67.0,
+        "source_fields": [
+          "input_tokens",
+          "output_tokens",
+          "reasoning_tokens"
+        ]
+      },
+      "raw_usage": {
+        "code": 0,
+        "err_msg": "",
+        "prompt": "",
+        "task_id": "",
+        "model_name": "qwen3.6-35b-a3b",
+        "total_latency": 0.0,
+        "first_token_time": "",
+        "request_start_time": "",
+        "input_tokens": 30,
+        "output_tokens": 64,
+        "total_tokens": 94,
+        "cache_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_miss_tokens": null,
+        "cache_write_tokens": null,
+        "cache_status": "observed",
+        "cache_source": "provider_usage",
+        "cache_authoritative": true,
+        "cache_creation_input_tokens": null,
+        "reasoning_tokens": 0,
+        "input_cost": 0.0,
+        "output_cost": 0.0,
+        "total_cost": 0.0
+      },
+      "reasoning_fields_present": true
+    },
+    {
+      "model": "qwen3.6-35b-a3b-noreason",
+      "status": "ok",
+      "latency_ms": 235.3,
+      "text_preview": "OK",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "reasoning_tokens": 0,
+        "total_cost": 5.2,
+        "source_fields": [
+          "input_tokens",
+          "output_tokens",
+          "reasoning_tokens"
+        ]
+      },
+      "raw_usage": {
+        "code": 0,
+        "err_msg": "",
+        "prompt": "",
+        "task_id": "",
+        "model_name": "qwen3.6-35b-a3b-noreason",
+        "total_latency": 0.0,
+        "first_token_time": "",
+        "request_start_time": "",
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "total_tokens": 34,
+        "cache_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_miss_tokens": null,
+        "cache_write_tokens": null,
+        "cache_status": "observed",
+        "cache_source": "provider_usage",
+        "cache_authoritative": true,
+        "cache_creation_input_tokens": null,
+        "reasoning_tokens": 0,
+        "input_cost": 0.0,
+        "output_cost": 0.0,
+        "total_cost": 0.0
+      },
+      "reasoning_fields_present": true
+    }
+  ]
 }
