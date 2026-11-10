@@ -1,0 +1,106 @@
+version: 1
+freeze: "2026-11-12T18:00:00+03:00"
+deadline: "2026-11-13T23:59:00+03:00"
+experiment_budget_units: 150000
+tasks:
+  - id: T000
+    lane: A
+    title: "Ветка, базовый прогон, фиксация исходного состояния"
+    depends_on: []
+    files: [".gitignore"]
+    commands:
+      - "python3.11 -m unittest discover -s tests"
+      - "python3.11 -m unittest discover -s tests/contract"
+      - "python3.11 run_agent.py --tasks-dir examples/task-dir --offline --mutation-repair --max-workers 1"
+    accept: "тесты зелёные, офлайн 8/8, score 20"
+  - id: T001
+    lane: B
+    title: "Реестр реализаций и конфиг OJ_*"
+    depends_on: [T000]
+    files: ["harness/registry.py", "tests/test_registry.py"]
+    commands: ["python3.11 -m unittest tests.test_registry -v"]
+    accept: "оценщик, политика и солверы собираются по имени; неизвестное имя даёт понятную ошибку"
+  - id: T002
+    lane: B
+    title: "Оценщик v1: T1, T13, T19"
+    depends_on: [T001]
+    files: ["harness/estimator.py", "tests/test_estimator.py", "eval/priors.py"]
+    commands: ["python3.11 -m unittest tests.test_estimator -v"]
+    accept: "прогноз на 8 примерах, MAPE и смещение записаны в отчёт"
+  - id: T003
+    lane: B
+    title: "Политика v1: T7, T10, T16"
+    depends_on: [T001, T002]
+    files: ["harness/policy.py", "tests/test_policy.py", "eval/probe.py"]
+    commands: ["python3.11 -m unittest tests.test_policy -v"]
+    accept: "0 перерасходов в симуляциях 20k/50k/100k, решения имеют причину"
+  - id: T004
+    lane: C
+    title: "Универсальный солвер с восстановлением JSON"
+    depends_on: [T000]
+    files: ["harness/solvers/generic.py", "tests/test_generic_solver.py"]
+    commands: ["python3.11 -m unittest tests.test_generic_solver -v"]
+    accept: "неизвестный тип решается с fake-LLM, битый JSON не роняет процесс"
+  - id: T005
+    lane: C
+    title: "Патчи через поиск и замену: T14"
+    depends_on: [T000]
+    files: ["harness/patch.py", "tests/test_patch.py"]
+    commands: ["python3.11 -m unittest tests.test_patch -v"]
+    accept: "все уровни лестницы покрыты тестами, промах возвращает closest_window"
+  - id: T006
+    lane: C
+    title: "Петля проверки и два варианта правки: T15, T17, T18"
+    depends_on: [T005]
+    files: ["harness/solvers/coding.py", "harness/memory.py", "tests/test_coding.py"]
+    commands: ["python3.11 -m unittest tests.test_coding -v"]
+    accept: "тесты неизменны по хешу, первая ошибка попадает в промпт, лимит итераций соблюдён"
+  - id: T007
+    lane: D
+    title: "Синтетика 40–60 задач и факты"
+    depends_on: [T000]
+    files: ["eval/make_synthetic.py", "eval/results/ground_truth.jsonl"]
+    commands: ["python3.11 eval/make_synthetic.py --n 50 --seed 42"]
+    accept: "50 задач, у каждой проверка и известная стоимость после прогона"
+  - id: T008
+    lane: B
+    title: "Калибровка: T2, T3, T4, T5, T6, T8, T9"
+    depends_on: [T002, T007]
+    files: ["harness/calibration.json", "eval/fit.py", "tests/test_estimator.py"]
+    commands: ["python3.11 eval/fit.py --input eval/results/ground_truth.jsonl", "python3.11 -m unittest tests.test_estimator -v"]
+    accept: "таблица MAPE по теориям, калибровка только на train, конформное покрытие посчитано"
+  - id: T009
+    lane: D
+    title: "Eval, метрики, симуляции, абляции T12"
+    depends_on: [T008]
+    files: ["eval/run_eval.py", "eval/metrics.py", "eval/results/results.md"]
+    commands: ["python3.11 eval/run_eval.py --simulate 20000,50000,100000"]
+    accept: "таблица B0–B4, 0 перерасходов, отчёт сгенерирован"
+  - id: T010
+    lane: D
+    title: "Перенос 16–18 задач lorne и манифест"
+    depends_on: [T007]
+    files: ["eval/tasks-lorne/**", "eval/import_lorne.py"]
+    commands: ["python3.11 eval/import_lorne.py --src /home/eq/techlb/TCA/bench/tasks"]
+    accept: "у каждой задачи есть check и манифест; grep-проверки заменены структурными"
+  - id: T011
+    lane: A
+    title: "Упаковка Docker, non-root, read-only прогон"
+    depends_on: [T000]
+    files: ["Dockerfile", "entrypoint.sh", "scripts/build.sh", "scripts/run_local.sh"]
+    commands: ["bash scripts/build.sh", "bash scripts/run_local.sh"]
+    accept: "образ собирается, read-only прогон пишет answer.txt, размер и время записаны"
+  - id: T012
+    lane: F
+    title: "README: методология, таблица теорий, ограничения"
+    depends_on: [T009, T010]
+    files: ["README.md"]
+    commands: ["python3.11 -c \"import pathlib;assert 'MAPE' in pathlib.Path('README.md').read_text()\""]
+    accept: "есть методология, числа, команды воспроизведения и отрицательные результаты"
+  - id: T013
+    lane: F
+    title: "Заморозка, тег v1.0, финальная матрица"
+    depends_on: [T003, T006, T011, T012]
+    files: []
+    commands: ["git tag v1.0", "python3.11 eval/run_eval.py --final"]
+    accept: "матрица раздела 13 зелёная, тег создан, отчёт приложен"

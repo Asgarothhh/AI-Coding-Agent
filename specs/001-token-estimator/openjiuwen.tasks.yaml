@@ -1,0 +1,36 @@
+version: 1
+tasks:
+  - id: O1
+    lane: B
+    title: "Доказательство использования openJiuwen SDK"
+    depends_on: [T000]
+    files:
+      - "scripts/verify_openjiuwen.py"
+      - "tests/test_openjiuwen_backend.py"
+      - "eval/results/openjiuwen-proof.txt"
+    commands:
+      - "python3.11 scripts/verify_openjiuwen.py"
+      - "python3.11 -m unittest tests.test_openjiuwen_backend -v"
+    accept: "версия пакета, строка LLM backend: openjiuwen, llm_backend в summary и отсутствие секретов в логах подтверждены и сохранены"
+  - id: O2
+    lane: A
+    title: "Swarm-совместимая обёртка и harness-отчёт"
+    depends_on: [O1]
+    files:
+      - "jiuwenswarm-batch.sh"
+      - "scripts/build.sh"
+      - "eval/results/harness-report.json"
+    commands:
+      - "bash jiuwenswarm-batch.sh --tasks-dir examples/task-dir --offline"
+      - "python3.11 ~/jiuwenswarm-prep/collect_harness_report.py"
+    accept: "harness-отчёт содержит JIUWENSWARM_* или jiuwenswarm в дереве процессов, sha256 сохранён"
+  - id: O3
+    lane: C
+    title: "Эксперимент DeepAgent на двух задачах"
+    depends_on: [O1]
+    files:
+      - "eval/deepagent_probe.py"
+      - "eval/results/deepagent.md"
+    commands:
+      - "python3.11 eval/deepagent_probe.py --tasks 2 --budget 6000"
+    accept: "есть сравнение cost и score с базой; решение подключить или отказаться зафиксировано"
