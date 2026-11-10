@@ -41,3 +41,7 @@
 
 - [ ] 8.1 T012 — README: методология, таблица теорий, ограничения. Файлы: `README.md`. Проверка: `python3.11 -c "import pathlib;assert 'MAPE' in pathlib.Path('README.md').read_text()"`. Критерий: есть методология, измеренные числа, команды воспроизведения, таблица T1–T19 с результатами и отрицательные результаты.
 - [ ] 8.2 T013 — Заморозка, тег `v1.0`, финальная матрица. Файлы: правок кода нет; артефакты — тег `v1.0`, `eval/results/final.md`. Проверка: `python3.11 eval/run_eval.py --final`. Критерий: матрица раздела 13 зелёная, тег `v1.0` создан, `predictions.jsonl` и `trace.jsonl` приложены, `team.json` и секреты не закоммичены.
+
+## 9. Расширенный набор задач
+
+- [x] 9.1 T014 — Интеграция расширенного набора из 16 задач и фикс негативного упоминания сети. Файлы: `examples/task-dir-extended/**`, `examples/task-dir-extended/README.md`, `harness/triage.py`, `tests/test_triage.py`, `README.md`. Проверка: `python3.11 -m unittest tests.test_triage -v` и `python3.11 run_agent.py --tasks-dir examples/task-dir-extended --dry-run --offline`. Критерий: все 16 задач загружаются, ни одна не пропущена из-за фразы «no internet», замеренный результат офлайн-прогона записан в README, базовые 8 задач не изменены.

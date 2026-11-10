@@ -74,6 +74,61 @@ class TriageTests(unittest.TestCase):
             self.assertTrue(result.infeasible)
             self.assertTrue(any("internet" in reason for reason in result.reasons))
 
+    def test_negated_internet_instruction_is_feasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_negated",
+                task_type="search",
+                instruction=(
+                    "Strict mode: no internet and no LLM calls; "
+                    "use only local Python/file tools."
+                ),
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertLess(result.score, DEFAULT_THRESHOLD)
+            self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
+
+    def test_offline_instruction_is_feasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_offline",
+                task_type="search",
+                instruction="Work offline; no network access.",
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertLess(result.score, DEFAULT_THRESHOLD)
+            self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
+
+    def test_download_instruction_is_still_infeasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_download",
+                task_type="search",
+                instruction="Download the dataset from https://example.com/data.csv",
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertGreaterEqual(result.score, DEFAULT_THRESHOLD)
+            self.assertTrue(any("internet" in reason for reason in result.reasons))
+
+    def test_required_internet_access_is_still_infeasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_required",
+                task_type="search",
+                instruction="Internet access is required to fetch the page.",
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertGreaterEqual(result.score, DEFAULT_THRESHOLD)
+            self.assertTrue(any("internet" in reason for reason in result.reasons))
+
     def test_contradictory_instruction_is_infeasible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(

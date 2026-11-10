@@ -28,6 +28,20 @@ _INTERNET_RE = re.compile(
     r"(https?://|\bdownload\b|\bweb[\s-]?search\b|\bbrowse\s+the\s+web\b|\binternet\b|\bwget\b|\bcurl\s)",
     re.IGNORECASE,
 )
+# Prohibitive/negated mentions of the network ("no internet", "work offline",
+# "internet is not available", ...) must not look like a network requirement.
+# Such spans are blanked out before ``_INTERNET_RE`` runs; genuine requirements
+# elsewhere in the instruction (URLs, "download", "wget", ...) are unaffected.
+_NEGATED_NETWORK_RE = re.compile(
+    r"(?:"
+    r"\b(?:no|without)\s+(?:internet|network|web)(?:\s+access)?"
+    r"|\boffline\b"
+    r"|\b(?:do\s+not|don['\u2019]t|does\s+not|doesn['\u2019]t|never)\s+"
+    r"(?:use|access|browse)\s+(?:the\s+)?(?:internet|network|web)\b"
+    r"|\b(?:the\s+)?(?:internet|network|web)\s+(?:is\s+)?(?:not\s+available|unavailable)\b"
+    r")",
+    re.IGNORECASE,
+)
 _CONTRADICTION_PHRASES = (
     "impossible",
     "cannot be determined",
@@ -82,7 +96,7 @@ def triage(task: Task, threshold: float = DEFAULT_THRESHOLD) -> TriageResult:
     if len(instruction) < 12:
         findings.append((1.0, "instruction is empty or too short"))
 
-    if _INTERNET_RE.search(instruction):
+    if _requires_network(instruction):
         findings.append((0.85, "instruction appears to require internet/URL access"))
 
     contradiction = next((p for p in _CONTRADICTION_PHRASES if p in lowered), None)
@@ -152,6 +166,13 @@ def is_infeasible(task: Task, threshold: float = DEFAULT_THRESHOLD) -> bool:
 
 
 # -- helpers ------------------------------------------------------------------
+def _requires_network(instruction: str) -> bool:
+    """Return ``True`` when a non-negated network requirement is present."""
+
+    positive_text = _NEGATED_NETWORK_RE.sub(" ", instruction)
+    return _INTERNET_RE.search(positive_text) is not None
+
+
 def _referenced_files(instruction: str) -> list[str]:
     refs: list[str] = []
     for match in _FILE_REF_RE.finditer(instruction):

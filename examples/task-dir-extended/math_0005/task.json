@@ -1,0 +1,8 @@
+{
+  "task_id": "math_0005",
+  "task_type": "math",
+  "instruction": "A warehouse starts with 98765 boxes. It ships 1234 boxes per day for 7 days. It receives 9 deliveries of 321 boxes each. Then the stock is split equally into 3 warehouses and it keeps one share (rounded down). Then the stock is doubled by merging with a sister warehouse. Then it ships 777 boxes per day for 5 days. Then the stock is split equally into 7 warehouses and it keeps one share (rounded down). Then it receives 3 deliveries of 456 boxes each. How many boxes does it have at the end? Compute it with the bash tool (python3 -c). Strict mode: no internet and no LLM calls; use only local Python/file tools. Work only inside the current directory. When you are done, write ONLY the final answer to the file answer.txt in the current directory (for example with bash: echo 42 > answer.txt).",
+  "reward": 5,
+  "expected": "9671",
+  "check": "exact_int"
+}

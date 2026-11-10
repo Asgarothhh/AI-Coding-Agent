@@ -1,0 +1,8 @@
+{
+  "task_id": "data_analysis_0007",
+  "task_type": "data_analysis",
+  "instruction": "The file sales.csv has columns order_id,region,product,month,units,price (600 rows). What was the total revenue in whole dollars, defined as the sum of units * price, for product 'widget' sold in region 'west' during months 4 through 9 inclusive, counting only orders where units is at least 10? Use bash with python3 to compute it. Do not hardcode the answer; compute it from the CSV. Strict mode: no internet and no LLM calls. Work only inside the current directory. When you are done, write ONLY the final answer to the file answer.txt in the current directory (for example with bash: echo 42 > answer.txt).",
+  "reward": 4,
+  "expected": "18776",
+  "check": "exact_int"
+}

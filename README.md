@@ -60,6 +60,7 @@ requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
 tests/                           stdlib unittest suite
 tests/contract/                  29 contract tests (paths, budget, planner, parallel, time limit, E2E)
 examples/task-dir/               eight official examples
+examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 ```
 
 ## Contract details implemented
@@ -371,9 +372,42 @@ API note: the DeepAgent path follows the signatures verified in the
 the model layer and its logging were verified in the container against the live
 proxy, but `DeepAgentRuntime.solve()` is still not wired into the default runner.
 
+## Extended task set
+
+`examples/task-dir-extended/` holds **16 tasks** (816 KB) extracted from
+`task-dir.rar`: the **8 official** examples plus **8 additional** tasks. The set is
+purely additive — `examples/task-dir` remains the frozen 8-task contract baseline
+and is never modified by extended-set work.
+
+Measured offline run (on a copy, `--max-workers 1`):
+
+| type | total | solved | reward solved | comment |
+| --- | --- | --- | --- | --- |
+| math | 4 | 4 | 17 | deterministic arithmetic path |
+| data_analysis | 4 | 4 | 15 | deterministic CSV aggregation |
+| search | 4 | 2 | 3 | multi-hop chains fail |
+| coding | 4 | 2 | 4 | multi-function bugs need the LLM |
+
+```bash
+python3.11 run_agent.py --tasks-dir examples/task-dir-extended --offline --mutation-repair --max-workers 1
+```
+
+Result: **16 tasks, 12 solved, 0 skipped, 4 failed gracefully, score 39, 0 tokens**.
+
+The four failures are graceful, not errors, and both groups need the LLM path:
+
+* `search_0006`, `search_0007` — multi-hop relation chains that the deterministic
+  retrieval cannot complete (e.g. `field 'founded' missing`);
+* `coding_0008`, `coding_0009` — multi-function bugs that require generated fixes
+  rather than the local repair loop.
+
+Triage fix: instructions that say "no internet and no LLM calls" are now read as a
+**prohibition**, not as a requirement. Previously such phrasing could mark a task
+infeasible; after the fix all 16 extended tasks are planned and attempted.
+
 ## Tests
 
-The full suite is **113 stdlib unittest tests**, of which **2 are skipped** on
+The full suite is **117 stdlib unittest tests**, of which **2 are skipped** on
 the host because they require a real `openjiuwen` import. **29 contract tests**
 live under `tests/contract/`.
 

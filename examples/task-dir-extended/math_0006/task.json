@@ -1,0 +1,8 @@
+{
+  "task_id": "math_0006",
+  "task_type": "math",
+  "instruction": "A farmer starts with 54321 apples. He sells 17% of them; the number of apples sold is rounded down. Then he sells 23% of the remaining apples; the number of apples sold is rounded down. Then he gives away 45 apples. Then he doubles the remainder by buying an equal amount. Then he splits the apples equally into 5 barns and keeps one share (rounded down), sending the rest to the other barns. Then he packs the kept apples into crates of 36, leaving the remainder unpacked. How many of the kept apples are left unpacked? Compute it with the bash tool (python3 -c). Strict mode: no internet and no LLM calls; use only local Python/file tools. Work only inside the current directory. When you are done, write ONLY the final answer to the file answer.txt in the current directory (for example with bash: echo 42 > answer.txt).",
+  "reward": 5,
+  "expected": "8",
+  "check": "exact_int"
+}

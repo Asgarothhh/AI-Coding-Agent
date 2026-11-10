@@ -1,0 +1,8 @@
+{
+  "task_id": "search_0006",
+  "task_type": "search",
+  "instruction": "The directory kb/ contains a small knowledge base of markdown files. In which city is the headquarters of the employer of the mentor of the mentor of Maya Sato? Use the file tools or bash (ls, grep, cat) to find it. Strict mode: no internet and no LLM calls. Work only inside the current directory. When you are done, write ONLY the final answer to the file answer.txt in the current directory (for example with bash: echo 42 > answer.txt).",
+  "reward": 3,
+  "expected": "Lisbon",
+  "check": "exact_str"
+}
