@@ -3,7 +3,7 @@
 **Связанный документ:** `spec.md` (спека 001)
 **Версия:** 1.0 · 10 ноября 2026
 **Пакет:** `openjiuwen==0.1.20.post1`
-**Задачи:** O1–O3 в `openjiuwen.tasks.yaml`
+**Задачи:** O1–O4 в `openjiuwen.tasks.yaml`
 
 ---
 
@@ -13,11 +13,12 @@
 
 ---
 
-## 2. Три уровня интеграции
+## 2. Уровни интеграции
 
 | Уровень | Что это | Статус | Где в коде |
 |---|---|---|---|
-| L1. Модельный слой | `Model`, `ModelClientConfig`, `ModelRequestConfig` из `openjiuwen.core.foundation.llm` | **работает**, выбран по умолчанию при `--llm-backend auto` | `harness/ojiuwen_llm.py`, `harness/llm.py` |
+| L1. Модельный слой | `Model`, `ModelClientConfig`, `ModelRequestConfig` из `openjiuwen.core.foundation.llm` | **работает**, выбран по умолчанию; внутри уже использует `Runner.callback_framework` | `harness/ojiuwen_llm.py`, `harness/llm.py` |
+| L1b. WorkflowAgent + Runner | `WorkflowAgent` + `WorkflowAgentConfig` и `Runner.run_agent` / `run_workflow` | официальный путь из примеров SDK; требует workflow-схем, поэтому для одной задачи тяжелее | `openjiuwen/core/application/workflow_agent/`, `openjiuwen/core/runner/runner.py` |
 | L2. DeepAgent | `create_deep_agent`, `AgentCard`, `create_agent_session`, rails, `MaxRoundsEvaluator`, `TimeoutEvaluator` | реализован, **не подключён** к раннеру | `harness/ojiuwen_runtime.py` |
 | L3. Приложение JiuwenSwarm / WorkSwarm | web UI, конфиг `~/.jiuwenswarm`, harness-отчёт | используется только для регистрации и отчёта | `~/jiuwenswarm-prep` |
 
@@ -40,6 +41,7 @@
    - `openjiuwen` — только SDK, иначе `LLMError` с понятным сообщением;
    - `stdlib` — всегда urllib-клиент.
 7. **Отчётность.** `run_agent.py:138-139` запоминает фактический бэкенд, `run_agent.py:169-170` кладёт в итоговый JSON поля `llm_backend` и `llm_backend_requested`.
+8. **Связь с Runner.** `Model` при создании регистрирует обработчики в `Runner.callback_framework`, поэтому даже низкоуровневый путь проходит через инфраструктуру Runner. `UsageMetadata` содержит `input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`; парсер SDK принимает и `prompt_tokens`/`completion_tokens`, а reasoning кладёт в `completion_tokens_details.reasoning_tokens`.
 
 ---
 
@@ -56,6 +58,7 @@
 6. В `trace.jsonl` и `predictions.jsonl` есть версия модели и потраченные токены.
 7. `collect_harness_report.py`, запущенный из-под JiuwenSwarm, содержит `JIUWENSWARM_*` или `jiuwenswarm` в дереве процессов.
 8. В README есть раздел про интеграцию и команды воспроизведения.
+9. **Smoke-тест двух путей.** Отдельный скрипт делает реальный вызов через `Model` и через `WorkflowAgent` + `Runner`; для каждого пути фиксируются latency, `usage` и ошибка, если путь недоступен. Установка пакета без реального вызова доказательством не считается.
 
 Заявленные в README результаты живого прогона (8/8, 454,3 единицы при одном воркере, 1162,7 при четырёх) **требуют повторного подтверждения на ПК команды**: на текущей машине SDK не установлен и ключа нет. До подтверждения это гипотеза, а не факт.
 
@@ -88,8 +91,9 @@
 | O1 | Скрипт и тест доказательства L1 | B | T000 | пункты 1–6 раздела 4 выполнены, вывод сохранён в `eval/results/openjiuwen-proof.txt` |
 | O2 | Swarm-совместимая обёртка и harness-отчёт | A | O1 | пункт 7 раздела 4 выполнен, отчёт и sha256 сохранены |
 | O3 | Эксперимент DeepAgent на двух задачах | C | O1 | есть сравнение cost/score с базой; решение «подключать или нет» зафиксировано |
+| O4 | Smoke-тест путей SDK: Model и WorkflowAgent+Runner | C | O1 | оба пути проверены реальным вызовом или зафиксирована недоступность; для выбранного пути записаны latency, usage и решение |
 
-O1 обязательна. O2 выполняется, если организаторы подтверждают требование Swarm или если остаётся время. O3 — эксперимент: при отсутствии выигрыша фиксируем отказ и не подключаем DeepAgent к раннеру.
+O1 обязательна. O2 выполняется, если организаторы подтверждают требование Swarm или если остаётся время. O3 — эксперимент: при отсутствии выигрыша фиксируем отказ и не подключаем DeepAgent к раннеру. O4 обязательна: без реального smoke-вызова интеграция считается неподтверждённой.
 
 ---
 
@@ -102,6 +106,7 @@ O1 обязательна. O2 выполняется, если организа�
 | SDK недоступен в финальном окружении | высокий | fallback stdlib уже реализован; в отчёте явно указан фактический бэкенд |
 | Логи SDK пишут в read-only каталог | средний | `configure_log_config` уже направляет их в `/tmp/openjiuwen-logs` |
 | DeepAgent съедает бюджет | средний | O3 с жёстким лимитом на 2 задачи и сравнением с базой |
+| Установка SDK принята за доказательство | высокий | O4: только реальный вызов через прокси считается подтверждением |
 
 ---
 
@@ -114,4 +119,5 @@ O1 обязательна. O2 выполняется, если организа�
 - [ ] В JSON `llm_backend=openjiuwen`.
 - [ ] Harness-отчёт содержит `JIUWENSWARM_*` или процесс `jiuwenswarm`.
 - [ ] README описывает интеграцию и команды.
+- [ ] Smoke-тест O4 подтвердил выбранный путь реальным вызовом (latency и usage записаны).
 - [ ] Ключи и `team.json` не закоммичены.

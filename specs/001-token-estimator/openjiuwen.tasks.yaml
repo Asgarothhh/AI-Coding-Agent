@@ -34,3 +34,13 @@ tasks:
     commands:
       - "python3.11 eval/deepagent_probe.py --tasks 2 --budget 6000"
     accept: "есть сравнение cost и score с базой; решение подключить или отказаться зафиксировано"
+  - id: O4
+    lane: C
+    title: "Smoke-тест путей SDK: Model и WorkflowAgent+Runner"
+    depends_on: [O1]
+    files:
+      - "scripts/sdk_smoke.py"
+      - "eval/results/sdk-path.md"
+    commands:
+      - "python3.11 scripts/sdk_smoke.py --model qwen3.6-35b-a3b-noreason"
+    accept: "оба пути проверены реальным вызовом или зафиксирована недоступность; для выбранного пути записаны latency, usage и решение"

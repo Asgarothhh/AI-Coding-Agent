@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Language: ru
+  All artifacts must be written in ru.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: openJiuwen Challenge 2026 batch agent.
+  Runtime: Python 3.11, stdlib-only core, openjiuwen==0.1.20.post1.
+  Container: read-only rootfs, HOME=/tmp, no network except LLM proxy.
+  Cost formula: prompt_tokens/10 + completion_tokens; reasoning counts as completion.
+  Entry point: python run_agent.py --tasks-dir /data/tasks
+  Tests: python3.11 -m unittest discover -s tests; contract: -s tests/contract.
+  Source material: specs/001-token-estimator/ (spec.md, tasks.yaml, openjiuwen.md).
+  Do not re-register the agent; registration is immutable.
+  Do not commit secrets, team.json, or API keys.
+
+rules:
+  proposal:
+    - Keep proposals under 700 words
+    - Always state what is out of scope
+  design:
+    - Reference the theory portfolio instead of repeating formulas
+  tasks:
+    - One commit per task, message starts with the task id
+    - Every task names one verification command and one acceptance criterion
+
+operations:
+  apply:
+    guidance:
+      - Run the full unit and contract suites before marking a task done
+      - Record measured numbers, not claims
+  archive:
+    guidance:
+      - Summarize which specs were created or updated
