@@ -7,12 +7,16 @@ layer instead of executing every triage-feasible task:
 2. :func:`harness.policy.plan_entries` selects a set under the single global
    budget (minus the 5-10% planning reserve) and the wall-clock limit;
 3. only accepted tasks run, in policy order;
-4. after every completed task the queue is replanned from a fresh
+4. after every completed task the observed usage is fed back to the
+   estimator, every not-yet-submitted task is re-estimated and the whole
+   remaining set is replanned from a fresh
    :class:`harness.budget.BudgetSnapshot`, without mutating past decisions.
 
-Rejected tasks are persisted as ``skipped`` with the canonical
-``reject:cost`` / ``reject:impossible`` / ``reject:time`` reason and never get
-an ``answer.txt``.
+Tasks rejected by the initial plan stay in the ``remaining`` set, so they can
+become accepted once actual usage lowers the estimates. Only tasks that are
+still rejected when the run ends are persisted as ``skipped`` with the
+canonical ``reject:cost`` / ``reject:impossible`` / ``reject:time`` reason;
+they never get an ``answer.txt``. Every task is finalised exactly once.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ from .llm import DEFAULT_MODEL, ESCALATION_MODEL, LLMClient, LLMConfig
 from .planner import PlanItem, build_plan
 from .policy import (
     DEFAULT_POLICY,
+    CostBasis,
+    Decision,
     PolicyConfig,
     TaskLike,
     plan_entries,
@@ -44,6 +50,7 @@ from .policy import (
 from .solvers.base import SolverContext, SolveResult, SolverOptions
 from .solvers.coding import solve as solve_coding
 from .solvers.data_analysis import solve as solve_data_analysis
+from .solvers.generic import solve as solve_generic
 from .solvers.math import solve as solve_math
 from .solvers.search import solve as solve_search
 from .store import AnswerStore
@@ -95,6 +102,9 @@ class RunOptions:
     escalation_model: str = ESCALATION_MODEL
     llm: LLMClient | None = None
     policy: str = DEFAULT_POLICY
+    # Programmatic callers keep the conservative upper basis unless they opt
+    # in; the CLI and ``PolicyConfig`` default to ``expected``.
+    cost_basis: CostBasis = "upper"
     planner_reserve: float | None = None
     ledger: BudgetLedger | None = None
     estimator: CostEstimator | None = None
@@ -168,7 +178,7 @@ def _solver_name(task: Task) -> str:
 
 def _policy_config(options: RunOptions, total_budget: float) -> PolicyConfig:
     if options.planner_reserve is None:
-        return PolicyConfig()
+        return PolicyConfig(cost_basis=options.cost_basis)
     value = float(options.planner_reserve)
     # ``--planner-reserve`` accepts a fraction of the total budget (the
     # documented 5-10% form).  A value above 1 is interpreted as absolute cost
@@ -180,18 +190,48 @@ def _policy_config(options: RunOptions, total_budget: float) -> PolicyConfig:
     return PolicyConfig(
         planning_reserve_rate=rate,
         low_confidence_reserve_rate=rate,
+        cost_basis=options.cost_basis,
     )
 
 
 def _estimate_tasks(
     tasks: list[Task],
-    estimator: CostEstimator,
+    estimator: Any,
     model: str,
 ) -> dict[str, CostEstimate]:
     estimates: dict[str, CostEstimate] = {}
     for task in tasks:
         estimates[task.task_id] = estimator.estimate(task, _solver_name(task), model)
     return estimates
+
+
+def _observe_result(
+    estimator: Any,
+    task: Task,
+    result: SolveResult,
+    model: str,
+) -> None:
+    """Feed one completed task's usage back to the estimator.
+
+    ``SolveResult.tokens`` is already expressed in challenge cost units, so it
+    is passed as the output side of a synthetic usage record: the estimator
+    only consumes the resulting total ratio.  Fake estimators used by tests are
+    allowed to implement ``observe`` without the full ``CostEstimator`` API;
+    an estimator without it is simply left untouched.
+    """
+
+    observe = getattr(estimator, "observe", None)
+    if not callable(observe):
+        return
+    try:
+        observe(
+            task,
+            _solver_name(task),
+            model,
+            {"input_tokens": 0, "output_tokens": float(result.tokens)},
+        )
+    except Exception:  # pragma: no cover - an observation must never kill a run
+        log.exception("estimator.observe failed for %s", task.task_id)
 
 
 def _initial_time_left(options: RunOptions) -> float | None:
@@ -251,6 +291,7 @@ def _planner_stats(
     stats["reserve"] = round(
         planning_reserve(total_budget, feasible, config=config), 6
     )
+    stats["cost_basis"] = config.cost_basis
     return stats
 
 
@@ -324,6 +365,20 @@ def run(options: RunOptions) -> dict[str, Any]:
     estimator_stats = _estimator_stats(estimates, options.model)
     replans = 0
 
+    # Initial decisions are frozen for the planner statistics.  ``latest`` is
+    # only updated for tasks that are still unsubmitted, so the final summary
+    # can report how the decision set evolved without rewriting history.
+    initial_decisions: dict[str, Decision] = {
+        entry.decision.task_id: entry.decision for entry in entries
+    }
+    latest_decisions: dict[str, Decision] = dict(initial_decisions)
+    initial_rejected = {
+        task_id
+        for task_id, decision in initial_decisions.items()
+        if not decision.accepted
+    }
+    reconsidered_ids: set[str] = set()
+
     if options.verbose:
         _print_plan(plan)
 
@@ -343,6 +398,8 @@ def run(options: RunOptions) -> dict[str, Any]:
             planner=planner,
             estimator=estimator_stats,
             replans=replans,
+            reconsidered=0,
+            final_accepted=planned,
         )
 
     max_workers = max(1, min(int(options.max_workers), MAX_PARALLEL_SESSIONS))
@@ -356,6 +413,7 @@ def run(options: RunOptions) -> dict[str, Any]:
 
     results: dict[str, dict[str, Any]] = {}
     results_lock = threading.Lock()
+    finalized: set[str] = set()
 
     def finalize(
         item: PlanItem,
@@ -366,6 +424,10 @@ def run(options: RunOptions) -> dict[str, Any]:
         error: str | None = None,
     ) -> None:
         task = item.task
+        with results_lock:
+            if task.task_id in finalized:
+                return
+            finalized.add(task.task_id)
         try:
             record = store.record_solution(task, result, status, duration, error=error)
         except Exception as exc:  # pragma: no cover - disk failure
@@ -400,44 +462,6 @@ def run(options: RunOptions) -> dict[str, Any]:
         with results_lock:
             results[task.task_id] = record
 
-    # Record every planning rejection before starting the pool.
-    for item in plan:
-        if item.status == "skipped":
-            finalize(
-                item,
-                SolveResult(None, 0.0, "", item.reason),
-                "skipped",
-                0.0,
-            )
-
-    # A zero wall-clock limit is the degenerate deadline: no task may start,
-    # and every planned task is accounted for as a time rejection.
-    if options.time_limit <= 0:
-        for item in plan:
-            if item.status == "planned":
-                finalize(
-                    item,
-                    SolveResult(None, 0.0, "", "reject:time"),
-                    "skipped",
-                    0.0,
-                )
-        return _solve_summary(
-            tasks=tasks,
-            plan=plan,
-            results=results,
-            store=store,
-            budget=ledger,
-            options=options,
-            llm=llm,
-            infeasible=infeasible,
-            planned=planned,
-            stop_reason="time_limit",
-            duration=time.monotonic() - started,
-            planner=planner,
-            estimator=estimator_stats,
-            replans=replans,
-        )
-
     def run_one(item: PlanItem) -> None:
         task = item.task
         task_started = time.monotonic()
@@ -449,20 +473,21 @@ def run(options: RunOptions) -> dict[str, Any]:
             finalize(item, SolveResult(None, 0.0, "", "skipped: budget exhausted"), "skipped", 0.0)
             return
 
-        solver = _SOLVERS.get(task.task_type)
+        solver = _SOLVERS.get(task.task_type, solve_generic)
         error: str | None = None
-        if solver is None:
-            result = SolveResult(None, 0.0, "", f"no solver registered for task type {task.task_type!r}")
-        else:
-            context = SolverContext(budget=solver_budget, llm=llm, options=solver_options)
-            try:
-                result = solver(task, context)
-            except BudgetExhausted as exc:
-                result = SolveResult(None, 0.0, task.task_type, f"budget stop: {exc}")
-            except Exception as exc:
-                log.exception("solver crashed for %s", task.task_id)
-                error = f"{type(exc).__name__}: {exc}"
-                result = SolveResult(None, 0.0, task.task_type, f"solver error: {error}")
+        context = SolverContext(budget=solver_budget, llm=llm, options=solver_options)
+        try:
+            result = solver(task, context)
+        except BudgetExhausted as exc:
+            result = SolveResult(None, 0.0, task.task_type, f"budget stop: {exc}")
+        except Exception as exc:
+            log.exception("solver crashed for %s", task.task_id)
+            error = f"{type(exc).__name__}: {exc}"
+            result = SolveResult(None, 0.0, task.task_type, f"solver error: {error}")
+
+        # Feed the actual usage back before the completion is observed by the
+        # scheduler, so the next replan uses the adapted multiplier.
+        _observe_result(estimator, task, result, options.model)
 
         if result.answer is not None:
             try:
@@ -479,26 +504,42 @@ def run(options: RunOptions) -> dict[str, Any]:
 
         finalize(item, result, status, time.monotonic() - task_started, error=error)
 
+    # ``remaining`` holds every task that has not been submitted yet, whether
+    # it was accepted by the initial plan or rejected.  ``queue`` is the
+    # runnable subset in policy order.  A submitted task is removed from both,
+    # so a completed or running task can never be resubmitted.
+    remaining: dict[str, PlanItem] = {item.task.task_id: item for item in plan}
     queue: deque[PlanItem] = deque(item for item in plan if item.status == "planned")
     pending: dict[futures.Future[None], PlanItem] = {}
-    stop_reason: str | None = None
+    stop_reason: str | None = "time_limit" if options.time_limit <= 0 else None
 
     def requeue() -> None:
-        """Replan the not-yet-submitted queue after one task completes.
+        """Re-estimate and replan every not-yet-submitted task.
 
-        Submitted tasks are already past the decision point and are never
-        cancelled or mutated.  The ledger snapshot is the only source of truth
-        for remaining budget; past ``Decision`` objects stay frozen.
+        The estimator is the only source of the in-memory ``observe``
+        correction, so every remaining task is estimated again before the
+        whole remaining set is handed to :func:`harness.policy.replan`.  Tasks
+        that were rejected initially stay in ``remaining`` and may now become
+        accepted.  Submitted tasks are already past the decision point and are
+        never cancelled, mutated or resubmitted; the ledger snapshot is the
+        only source of truth for the remaining budget, and past ``Decision``
+        objects stay frozen.
         """
 
         nonlocal replans, stop_reason
-        if not queue:
+        if not remaining:
             return
-        queued_items = list(queue)
-        queued_tasks = [item.task for item in queued_items]
-        queued_estimates = {
+        remaining_items = list(remaining.values())
+        remaining_tasks = [item.task for item in remaining_items]
+        for item in remaining_items:
+            estimates[item.task.task_id] = estimator.estimate(
+                item.task,
+                _solver_name(item.task),
+                options.model,
+            )
+        remaining_estimates = {
             item.task.task_id: estimates[item.task.task_id]
-            for item in queued_items
+            for item in remaining_items
         }
         if stop_reason is None and not ledger.can_start_task():
             stop_reason = "budget"
@@ -521,18 +562,18 @@ def run(options: RunOptions) -> dict[str, Any]:
         # While a deadline is still live the pool enforces it on submission;
         # the heuristic time estimate must not pre-empt that real enforcement
         # (it would reject every LLM task on a short test window).  Once the
-        # deadline has passed, remaining time is zero and queued tasks become
-        # explicit ``reject:time`` decisions.
+        # deadline has passed, remaining time is zero and remaining tasks
+        # become explicit ``reject:time`` decisions.
         if options.time_limit > 0:
-            remaining = options.time_limit - (time.monotonic() - started)
-            time_left: float | None = 0.0 if remaining <= 0 else None
+            time_remaining = options.time_limit - (time.monotonic() - started)
+            time_left: float | None = 0.0 if time_remaining <= 0 else None
             if time_left == 0.0 and stop_reason is None:
                 stop_reason = "time_limit"
         else:
             time_left = None
         decisions = replan(
-            cast("list[TaskLike]", queued_tasks),
-            queued_estimates,
+            cast("list[TaskLike]", remaining_tasks),
+            remaining_estimates,
             ledger_snapshot,
             time_left,
             policy=options.policy,
@@ -542,25 +583,35 @@ def run(options: RunOptions) -> dict[str, Any]:
             triage_threshold=options.triage_threshold,
         )
         replans += 1
-        item_by_id = {item.task.task_id: item for item in queued_items}
+        item_by_id = {item.task.task_id: item for item in remaining_items}
         accepted_ids = [decision.task_id for decision in decisions if decision.accepted]
+        reconsidered_ids.update(
+            task_id for task_id in accepted_ids if task_id in initial_rejected
+        )
         queue.clear()
         queue.extend(
             item_by_id[task_id]
             for task_id in accepted_ids
             if task_id in item_by_id
         )
+
+        # Keep the next replan input in decision order (accepted first in
+        # policy order, rejected after it in stable input order).  Rejections
+        # are not finalised here: they remain candidates for a later replan.
+        ordered: list[PlanItem] = []
+        decided: set[str] = set()
         for decision in decisions:
-            if decision.accepted:
+            ordered_item = item_by_id.get(decision.task_id)
+            if ordered_item is None:
                 continue
-            item = item_by_id.get(decision.task_id)
-            if item is not None:
-                finalize(
-                    item,
-                    SolveResult(None, 0.0, "", decision.reason),
-                    "skipped",
-                    0.0,
-                )
+            ordered.append(ordered_item)
+            decided.add(decision.task_id)
+            latest_decisions[decision.task_id] = decision
+        for pending_item in remaining_items:
+            if pending_item.task.task_id not in decided:
+                ordered.append(pending_item)
+        remaining.clear()
+        remaining.update((item.task.task_id, item) for item in ordered)
 
     with futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent") as pool:
         while queue or pending:
@@ -572,6 +623,7 @@ def run(options: RunOptions) -> dict[str, Any]:
                     stop_reason = "budget"
                     break
                 item = queue.popleft()
+                remaining.pop(item.task.task_id, None)
                 pending[pool.submit(run_one, item)] = item
 
             if not pending:
@@ -581,10 +633,10 @@ def run(options: RunOptions) -> dict[str, Any]:
 
             timeout = 0.5
             if options.time_limit > 0:
-                remaining = options.time_limit - (time.monotonic() - started)
-                if remaining <= 0:
+                time_remaining = options.time_limit - (time.monotonic() - started)
+                if time_remaining <= 0:
                     stop_reason = "time_limit"
-                timeout = max(0.05, min(0.5, remaining))
+                timeout = max(0.05, min(0.5, time_remaining))
             done, _ = futures.wait(pending, timeout=timeout, return_when=futures.FIRST_COMPLETED)
             for future in done:
                 item = pending.pop(future)
@@ -602,10 +654,35 @@ def run(options: RunOptions) -> dict[str, Any]:
                 # Replan after each completed task, using the fresh ledger.
                 requeue()
 
-    while queue:
-        item = queue.popleft()
-        reason = f"skipped: not started ({stop_reason or 'run stopped'})"
-        finalize(item, SolveResult(None, 0.0, "", reason), "skipped", 0.0)
+    # Anything still in the runnable queue is also part of ``remaining`` by
+    # construction; folding it back keeps the finalisation loop total even if
+    # a future caller ever changes that invariant.
+    for item in queue:
+        remaining.setdefault(item.task.task_id, item)
+    queue.clear()
+
+    # Every unsubmitted task is finalised exactly once.  A task whose latest
+    # decision is a rejection keeps the canonical ``reject:*`` reason; an
+    # accepted task that never started is recorded as skipped by the stop
+    # reason, preserving the previous behaviour.
+    for item in remaining.values():
+        decision = latest_decisions.get(item.task.task_id)
+        if decision is not None and not decision.accepted:
+            reason = decision.reason
+        else:
+            reason = f"skipped: not started ({stop_reason or 'run stopped'})"
+        finalize(
+            item,
+            SolveResult(None, 0.0, "", reason),
+            "skipped",
+            0.0,
+        )
+
+    final_accepted_ids = {
+        task_id
+        for task_id, decision in latest_decisions.items()
+        if decision.accepted
+    }
 
     return _solve_summary(
         tasks=tasks,
@@ -622,6 +699,8 @@ def run(options: RunOptions) -> dict[str, Any]:
         planner=planner,
         estimator=estimator_stats,
         replans=replans,
+        reconsidered=len(reconsidered_ids),
+        final_accepted=len(final_accepted_ids),
     )
 
 
@@ -649,6 +728,7 @@ def _base_summary(
         "planned": planned,
         "infeasible": infeasible,
         "policy": options.policy,
+        "cost_basis": options.cost_basis,
         "planner": planner,
         "estimator": estimator,
         "budget_source": options.budget_source,
@@ -670,6 +750,8 @@ def _dry_run_summary(
     planner: dict[str, Any],
     estimator: dict[str, Any],
     replans: int,
+    reconsidered: int,
+    final_accepted: int,
 ) -> dict[str, Any]:
     per_type: dict[str, dict[str, Any]] = {}
     for item in plan:
@@ -704,6 +786,8 @@ def _dry_run_summary(
             "completion_tokens": 0,
             "stop_reason": None,
             "replans": replans,
+            "reconsidered": reconsidered,
+            "final_accepted": final_accepted,
             "per_type": per_type,
             "plan": [item.as_dict() for item in plan],
         }
@@ -727,6 +811,8 @@ def _solve_summary(
     planner: dict[str, Any],
     estimator: dict[str, Any],
     replans: int,
+    reconsidered: int,
+    final_accepted: int,
 ) -> dict[str, Any]:
     per_type: dict[str, dict[str, Any]] = {}
     for task in tasks:
@@ -783,6 +869,8 @@ def _solve_summary(
             "model": llm.config.model if llm is not None else None,
             "stop_reason": stop_reason,
             "replans": replans,
+            "reconsidered": reconsidered,
+            "final_accepted": final_accepted,
             "per_type": per_type,
             "results": [results[key] for key in sorted(results)],
         }

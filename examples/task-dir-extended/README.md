@@ -75,18 +75,21 @@ Run on a copy with `--max-workers 1`:
 | --- | --- | --- | --- | --- |
 | math | 4 | 4 | 17 | deterministic arithmetic path |
 | data_analysis | 4 | 4 | 15 | deterministic CSV aggregation |
-| search | 4 | 2 | 3 | multi-hop chains fail |
+| search | 4 | 4 | 10 | relation chains (`search_0006` → Lisbon, `search_0007` → Granite AI) |
 | coding | 4 | 2 | 4 | multi-function bugs need the LLM |
+
+Offline totals per type: math 4/4, data_analysis 4/4, search 4/4, coding 2/4.
 
 ```bash
 python3.11 run_agent.py --tasks-dir examples/task-dir-extended --offline --mutation-repair --max-workers 1
 ```
 
-Result: **16 tasks, 12 solved, 0 skipped, 4 failed gracefully, score 39, 0 tokens**.
+Result: **16 tasks, 14 solved, 0 skipped, 2 failed gracefully, score 46, 0 tokens**.
 
-The four failures are graceful, not errors, and both groups need the LLM path:
+Live result: **16/16, score 54, 3421.8 units, 4 workers** (gateway backend, read-only
+container; see `eval/results/live-v5.md`).
 
-* `search_0006`, `search_0007` — multi-hop relation chains that the deterministic
-  retrieval cannot complete (e.g. `field 'founded' missing`);
+Only the two coding failures are graceful, not errors, and they need the LLM path:
+
 * `coding_0008`, `coding_0009` — multi-function bugs that require generated fixes
   rather than the local repair loop.

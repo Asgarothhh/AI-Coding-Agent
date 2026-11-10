@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import logging
 import os
 import sys
+import threading
+import time
 import types
 import unittest
 from collections.abc import Mapping
@@ -17,13 +20,18 @@ from unittest import mock
 from harness.llm import LLMConfig, build_llm_client
 from harness.openjiuwen_gateway import (
     ALLOWED_MODELS,
+    DEFAULT_LLM_MAX_RETRIES,
+    DEFAULT_MAX_CONCURRENT_LLM,
     GatewayBudgetError,
     GatewayChatAdapter,
     GatewayConfigError,
     GatewayError,
+    GatewayRateLimitError,
     GatewayUnavailableError,
     LLMResult,
     OpenJiuwenGateway,
+    classify_error,
+    concurrency_limit,
     estimate_input_tokens,
 )
 
@@ -638,6 +646,357 @@ class ChatAdapterTests(unittest.TestCase):
             self.assertNotIn(SECRET_KEY, repr(client))
         finally:
             client.close()
+
+
+# -- retry, rate-limit and concurrency tests ---------------------------------
+class FakeRateLimitError(Exception):
+    """Mirrors the SDK's RateLimitError: class name and HTTP 429."""
+
+    def __init__(self, message: str = "429 rate limit exceeded", status_code: int = 429) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class FakeInternalServerError(Exception):
+    status_code = 503
+
+
+class FakeAuthenticationError(Exception):
+    def __init__(self, message: str = "401 Unauthorized", status_code: int = 401) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class FakeErrorWithRetryAfter(Exception):
+    def __init__(self, retry_after: str, message: str = "429 too many requests") -> None:
+        super().__init__(message)
+        self.status_code = 429
+        self.headers = {"retry-after": retry_after}
+
+
+class FlakyModel:
+    """Raises a scripted exception per call, then succeeds."""
+
+    def __init__(self, errors: list[BaseException | None], assistant: FakeAssistant | None = None) -> None:
+        self.errors = list(errors)
+        self.assistant = assistant or FakeAssistant()
+        self.calls = 0
+        self._lock = threading.Lock()
+
+    async def invoke(self, messages: Any, **kwargs: Any) -> FakeAssistant:
+        with self._lock:
+            index = self.calls
+            self.calls += 1
+        if index < len(self.errors) and self.errors[index] is not None:
+            raise self.errors[index]
+        return self.assistant
+
+
+class GatedModel:
+    """Blocks inside ``invoke`` until the test opens the gate.
+
+    The wait is an async poll so one persistent event loop can host several
+    concurrent invokes (a blocking ``Event.wait`` would serialise the fake and
+    hide the semaphore under test).
+    """
+
+    def __init__(self) -> None:
+        self.gate = threading.Event()
+        self._lock = threading.Lock()
+        self.active = 0
+        self.peak = 0
+        self.calls = 0
+
+    async def invoke(self, messages: Any, **kwargs: Any) -> FakeAssistant:
+        with self._lock:
+            self.calls += 1
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+        try:
+            deadline = time.monotonic() + 10.0
+            while not self.gate.is_set() and time.monotonic() < deadline:
+                await asyncio.sleep(0.005)
+        finally:
+            with self._lock:
+                self.active -= 1
+        return FakeAssistant()
+
+    def snapshot(self) -> tuple[int, int]:
+        with self._lock:
+            return self.active, self.peak
+
+
+class RetryConfigTests(unittest.TestCase):
+    def test_defaults_are_three_retries_and_three_concurrent_calls(self) -> None:
+        self.assertEqual(DEFAULT_MAX_CONCURRENT_LLM, 3)
+        self.assertEqual(DEFAULT_LLM_MAX_RETRIES, 3)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OJ_MAX_CONCURRENT_LLM", None)
+            os.environ.pop("OJ_LLM_MAX_RETRIES", None)
+            self.assertEqual(concurrency_limit(), 3)
+            gateway = _make_gateway()
+            try:
+                self.assertEqual(gateway.max_concurrent, 3)
+                self.assertEqual(gateway.max_retries, 3)
+            finally:
+                gateway.close()
+
+    def test_concurrency_env_is_clamped_to_one_through_ten(self) -> None:
+        cases = {"99": 10, "10": 10, "4": 4, "1": 1, "0": 1, "-5": 1, "abc": 3}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw), mock.patch.dict(
+                os.environ, {"OJ_MAX_CONCURRENT_LLM": raw}, clear=False
+            ):
+                self.assertEqual(concurrency_limit(), expected)
+
+    def test_retry_env_is_clamped_and_invalid_falls_back(self) -> None:
+        cases = {"0": 0, "1": 1, "99": 10, "abc": 3}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw), mock.patch.dict(
+                os.environ, {"OJ_LLM_MAX_RETRIES": raw}, clear=False
+            ):
+                gateway = _make_gateway()
+                try:
+                    self.assertEqual(gateway.max_retries, expected)
+                finally:
+                    gateway.close()
+
+
+class ClassifyErrorTests(unittest.TestCase):
+    def test_transient_statuses_are_retryable(self) -> None:
+        for status in (429, 500, 502, 503, 504, 408, 409, 425):
+            with self.subTest(status=status):
+                info = classify_error(FakeRateLimitError("boom", status_code=status))
+                self.assertTrue(info.retryable)
+                self.assertEqual(info.status, status)
+                self.assertTrue(info.definitely_not_sent)
+
+    def test_auth_and_client_errors_are_not_retryable(self) -> None:
+        for status in (400, 401, 403, 404, 422):
+            with self.subTest(status=status):
+                info = classify_error(FakeAuthenticationError("nope", status_code=status))
+                self.assertFalse(info.retryable)
+                self.assertFalse(info.definitely_not_sent)
+
+    def test_message_only_rate_limit_is_detected_in_a_cause_chain(self) -> None:
+        try:
+            try:
+                raise RuntimeError("HTTP 429: потолок тарифа 3")
+            except RuntimeError as inner:
+                raise ValueError("request failed") from inner
+        except ValueError as exc:
+            info = classify_error(exc)
+            self.assertTrue(info.retryable)
+            self.assertIsNone(info.status)
+
+
+class RateLimitRetryTests(unittest.TestCase):
+    def test_429_then_success_settles_exactly_once(self) -> None:
+        ledger = FakeLedger()
+        sleeps: list[float] = []
+        model = FlakyModel([FakeRateLimitError()])
+        gateway = _make_gateway(
+            factory=lambda spec: model,
+            ledger=ledger,
+            sleep=sleeps.append,
+        )
+        self.addCleanup(gateway.close)
+
+        result = _call(gateway, request_id="req-429-ok")
+
+        self.assertEqual(result.text, "OK")
+        self.assertEqual(model.calls, 2)
+        self.assertEqual([event[0] for event in ledger.events], ["reserve", "settle"])
+        self.assertEqual(len(sleeps), 1)
+        self.assertGreaterEqual(sleeps[0], 1.0)
+        self.assertLess(sleeps[0], 1.0 * 1.25)
+
+    def test_429_exhausted_releases_and_raises_clear_error(self) -> None:
+        ledger = SpecStyleLedger()
+        sleeps: list[float] = []
+        model = FlakyModel([FakeRateLimitError()] * 4)
+        gateway = _make_gateway(
+            factory=lambda spec: model,
+            ledger=ledger,
+            sleep=sleeps.append,
+        )
+        self.addCleanup(gateway.close)
+
+        with self.assertRaises(GatewayRateLimitError) as ctx:
+            _call(gateway, request_id="req-429-dead")
+
+        message = str(ctx.exception)
+        self.assertIn("429", message)
+        self.assertIn("retries exhausted", message)
+        self.assertEqual(model.calls, 4)  # 1 initial + 3 retries
+        self.assertEqual(
+            [event[0] for event in ledger.events], ["reserve", "release_failed"]
+        )
+        self.assertEqual(ledger.events[1][1], "req-429-dead")
+        self.assertTrue(ledger.events[1][2])
+        for delay, base in zip(sleeps, (1.0, 2.0, 4.0)):
+            self.assertGreaterEqual(delay, base)
+            self.assertLess(delay, base * 1.25)
+
+    def test_500_is_retried_and_then_settles(self) -> None:
+        ledger = FakeLedger()
+        sleeps: list[float] = []
+        model = FlakyModel([FakeInternalServerError("503 Service Unavailable")])
+        gateway = _make_gateway(
+            factory=lambda spec: model,
+            ledger=ledger,
+            sleep=sleeps.append,
+        )
+        self.addCleanup(gateway.close)
+
+        _call(gateway, request_id="req-500")
+
+        self.assertEqual(model.calls, 2)
+        self.assertEqual([event[0] for event in ledger.events], ["reserve", "settle"])
+        self.assertEqual(len(sleeps), 1)
+
+    def test_auth_error_is_not_retried(self) -> None:
+        ledger = SpecStyleLedger()
+        sleeps: list[float] = []
+        model = FlakyModel([FakeAuthenticationError()])
+        gateway = _make_gateway(
+            factory=lambda spec: model,
+            ledger=ledger,
+            sleep=sleeps.append,
+        )
+        self.addCleanup(gateway.close)
+
+        with self.assertRaises(GatewayError) as ctx:
+            _call(gateway, request_id="req-401")
+
+        self.assertNotIsInstance(ctx.exception, GatewayRateLimitError)
+        self.assertIn("AuthenticationError", str(ctx.exception))
+        self.assertEqual(model.calls, 1)
+        self.assertEqual(sleeps, [])
+        self.assertEqual(
+            [event[0] for event in ledger.events], ["reserve", "release_failed"]
+        )
+        self.assertFalse(ledger.events[1][2])
+
+    def test_retry_after_header_is_honoured(self) -> None:
+        sleeps: list[float] = []
+        model = FlakyModel([FakeErrorWithRetryAfter("5")])
+        gateway = _make_gateway(factory=lambda spec: model, sleep=sleeps.append)
+        self.addCleanup(gateway.close)
+
+        _call(gateway, request_id="req-retry-after")
+
+        self.assertEqual(model.calls, 2)
+        self.assertEqual(sleeps, [5.0])
+
+    def test_retry_after_caps_absorbing_backoff(self) -> None:
+        sleeps: list[float] = []
+        model = FlakyModel(
+            [FakeErrorWithRetryAfter("0.25"), FakeRateLimitError()]
+        )
+        gateway = _make_gateway(factory=lambda spec: model, sleep=sleeps.append)
+        self.addCleanup(gateway.close)
+
+        _call(gateway, request_id="req-retry-after-then-default")
+
+        self.assertEqual(sleeps[0], 0.25)
+        self.assertGreaterEqual(sleeps[1], 2.0)  # second retry uses 2 s base
+        self.assertLess(sleeps[1], 2.0 * 1.25)
+
+    def test_transient_log_does_not_leak_key_or_base_url(self) -> None:
+        sleeps: list[float] = []
+        leaky = FakeRateLimitError(f"429 key={SECRET_KEY} url={BASE_URL}")
+        model = FlakyModel([leaky])
+        gateway = _make_gateway(factory=lambda spec: model, sleep=sleeps.append)
+        self.addCleanup(gateway.close)
+
+        with self.assertLogs("harness.openjiuwen_gateway", level="WARNING") as captured:
+            _call(gateway, request_id="req-leaky")
+
+        text = "\n".join(captured.output)
+        self.assertNotIn(SECRET_KEY, text)
+        self.assertNotIn(BASE_URL, text)
+        self.assertIn("429", text)
+
+
+class ConcurrencyCapTests(unittest.TestCase):
+    def test_semaphore_blocks_the_fourth_concurrent_call_across_gateways(self) -> None:
+        tracker = GatedModel()
+
+        def factory(spec: Any) -> GatedModel:
+            return tracker
+
+        first = _make_gateway(factory=factory, max_concurrent=3)
+        second = _make_gateway(factory=factory, max_concurrent=3)
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        self.assertIs(first._semaphore, second._semaphore)
+
+        results: list[Any] = []
+        errors: list[BaseException] = []
+        lock = threading.Lock()
+
+        def worker(index: int, gateway: OpenJiuwenGateway) -> None:
+            try:
+                result = _call(gateway, request_id=f"conc-{index}")
+            except BaseException as exc:  # noqa: BLE001 - reported by the test
+                with lock:
+                    errors.append(exc)
+            else:
+                with lock:
+                    results.append(result)
+
+        threads = [
+            threading.Thread(
+                target=worker,
+                args=(index, first if index < 3 else second),
+            )
+            for index in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            active, peak = tracker.snapshot()
+            if peak >= 3:
+                break
+            time.sleep(0.01)
+
+        time.sleep(0.1)  # give a broken cap time to admit the 4th call
+        active, peak = tracker.snapshot()
+        self.assertEqual(peak, 3, "the 4th simultaneous SDK call must wait")
+        self.assertEqual(active, 3)
+
+        tracker.gate.set()
+        for thread in threads:
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive())
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 4)
+        self.assertEqual(tracker.calls, 4)
+        self.assertEqual(tracker.snapshot()[1], 3)
+
+    def test_semaphore_released_after_a_failed_call(self) -> None:
+        sleeps: list[float] = []
+        model = FlakyModel([FakeRateLimitError()] * 4)
+        gateway = _make_gateway(
+            factory=lambda spec: model,
+            sleep=sleeps.append,
+            max_concurrent=2,
+        )
+        self.addCleanup(gateway.close)
+
+        with self.assertRaises(GatewayRateLimitError):
+            _call(gateway, request_id="req-release-slot")
+
+        # Both slots are free again, so two more calls can run concurrently.
+        semaphore = gateway._semaphore
+        self.assertTrue(semaphore.acquire(blocking=False))
+        self.assertTrue(semaphore.acquire(blocking=False))
+        semaphore.release()
+        semaphore.release()
 
 
 if __name__ == "__main__":

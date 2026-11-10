@@ -47,3 +47,11 @@
 - [ ] 5.1 Integrator — Проверить доступ к репозиторию и сдаваемую ветку. Файлы: `README.md`. Проверка: `git ls-remote --heads origin`. Критерий: жюри видит ветку с последним проверенным коммитом, критичный код не остался только в feature branch.
 - [ ] 5.2 Integrator — Повторно проверить последний коммит, Docker build, image size и README. Файлы: `eval/results/final.md`, `README.md`. Проверка: `python3.11 -m unittest discover -s tests`. Критерий: AC-01…AC-16 имеют статус PASS или NOT VERIFIED с фактическими командами и числами.
 - [ ] 5.3 Integrator — Отправить ссылку на решение по официальному каналу. Файлы: `README.md`. Проверка: `git rev-parse HEAD`. Критерий: ссылка отправлена до 13.11 18:00 MSK, зафиксирован отправленный commit id, после закрытия код не меняется.
+
+## Stage 6 — Оптимизация результата
+
+- [x] 6.1 D3 — Исправить многошаговые цепочки search: повторные связи, обратный порядок, фильтр founded. Файлы: `harness/solvers/search.py`, `tests/test_solvers.py`. Проверка: `python3.11 -m unittest tests.test_solvers -v`. Критерий: search_0006 → Lisbon, search_0007 → Granite AI, offline 14/16.
+- [x] 6.2 D3 — Универсальный solver для неизвестного типа. Файлы: `harness/solvers/generic.py`, `harness/runner.py`, `tests/test_generic_solver.py`. Проверка: `python3.11 -m unittest tests.test_generic_solver -v`. Критерий: неизвестный тип решается live, answer.txt корректен.
+- [x] 6.3 D2 — База стоимости планировщика `expected` по умолчанию. Файлы: `harness/policy.py`, `run_agent.py`, `tests/test_policy.py`. Проверка: `python3.11 eval/simulate_policies.py`. Критерий: expected принимает больше задач при том же бюджете, overspend 0 в симуляции.
+- [x] 6.4 D1 — Семафор 3 и retry на 429/5xx. Файлы: `harness/openjiuwen_gateway.py`, `tests/test_openjiuwen_gateway.py`. Проверка: `python3.11 -m unittest tests.test_openjiuwen_gateway -v`. Критерий: 4 воркера дают 16/16, 429 не роняет задачу.
+- [x] 6.5 D2 — Перепланирование всех незапущенных задач с пересчётом оценок; возврат отклонённых задач после фактических наблюдений. Файлы: `harness/runner.py`, `tests/test_integration_planning.py`. Проверка: `python3.11 -m unittest tests.test_integration_planning -v`. Критерий: 100-задачный стресс 100/100, reconsidered 3, дублей записей нет.

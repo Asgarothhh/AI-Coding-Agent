@@ -150,10 +150,11 @@ Held-out lorne set (42 rows, split by `task_id`):
 The per-type median also has WAPE 42.4%. It wins, so it is the default.
 
 `harness/policy.py` selects tasks under the global budget. The default is
-`value_cost_greedy`: value is `reward * P_solve`, cost is `upper_cost`, and it
-plans against `remaining` minus a planning reserve of 5% (10% when
-low-confidence tasks dominate). `--planner-reserve` overrides the reserve.
-Available policies: `accept_all`, `reward_sort`, `value_cost_greedy`,
+`value_cost_greedy`: value is `reward * P_solve`, cost is the planned cost under
+`--cost-basis expected` (the default) with `--cost-basis upper` available for
+conservative upper-bound planning, and it plans against `remaining` minus a planning
+reserve of 5% (10% when low-confidence tasks dominate). `--planner-reserve` overrides
+the reserve. Available policies: `accept_all`, `reward_sort`, `value_cost_greedy`,
 `knapsack_dp`. Planning makes no LLM or network calls.
 
 Simulation at 20k / 50k / 100k budgets:
@@ -214,7 +215,7 @@ contract.
   the existing resolution order.
 * Live smoke and live runs are **verified**: `scripts/sdk_smoke.py` reached the
   organizer proxy for all four aliases, and the container solved 8/8 official
-  tasks and 14/16 extended tasks through this backend (see Verification and
+  tasks and 16/16 extended tasks through this backend (see Verification and
   `eval/results/live-v5.md`). Credentials were supplied via the environment at
   run time only; nothing is committed.
 
@@ -316,6 +317,8 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 --reserve FLOAT           keep untouched (default 0)
 --policy CHOICE           accept_all | reward_sort | value_cost_greedy | knapsack_dp
                           (default value_cost_greedy)
+--cost-basis CHOICE       expected | upper (default expected: plan on the expected
+                          cost and rely on the ledger for hard safety)
 --planner-reserve FLOAT   fraction of total, or absolute above 1
                           (default 5%, 10% when low-confidence dominates)
 --max-workers INT         parallel sessions, capped at 5 (default 4)
@@ -467,25 +470,30 @@ Measured offline run (on a copy, `--max-workers 1`):
 | --- | --- | --- | --- | --- |
 | math | 4 | 4 | 17 | deterministic arithmetic path |
 | data_analysis | 4 | 4 | 15 | deterministic CSV aggregation |
-| search | 4 | 2 | 3 | multi-hop chains fail |
+| search | 4 | 4 | 10 | relation chains (`search_0006` → Lisbon, `search_0007` → Granite AI) |
 | coding | 4 | 2 | 4 | multi-function bugs need the LLM |
 
 ```bash
 python3.11 run_agent.py --tasks-dir examples/task-dir-extended --offline --mutation-repair --max-workers 1
 ```
 
-Result: **16 tasks, 12 solved, 0 skipped, 4 failed gracefully, score 39, 0 tokens**.
+Result: **16 tasks, 14 solved, 0 skipped, 2 failed gracefully, score 46, 0 tokens**.
 
-The four failures are graceful, not errors, and both groups need the LLM path:
+Measured live run (4 workers, gateway, read-only container): **16/16 solved, score 54,
+3421.8 units, 89 s**. So the current state is **offline 14/16, score 46** and
+**live 16/16, score 54** — the live gap is exactly the two coding tasks that need the LLM.
 
-* `search_0006`, `search_0007` — multi-hop relation chains that the deterministic
-  retrieval cannot complete (e.g. `field 'founded' missing`);
+In the offline run only the two coding failures remain; both need the LLM path:
+
 * `coding_0008`, `coding_0009` — multi-function bugs that require generated fixes
   rather than the local repair loop.
 
 Triage fix: instructions that say "no internet and no LLM calls" are now read as a
 **prohibition**, not as a requirement. Previously such phrasing could mark a task
 infeasible; after the fix all 16 extended tasks are planned and attempted.
+
+Search fix: markdown retrieval now follows multi-hop relation chains, so the
+search subset is **4/4** offline (reward 10) instead of 2/4.
 
 ## Tests
 
@@ -533,17 +541,34 @@ Verified v5 results:
 |---|---|---|---|
 | Offline examples | 8 tasks, 0 infeasible, 6 solved, 2 coding failed gracefully | 0 | score 16 |
 | Offline + `--mutation-repair` | 8/8 solved | 0 | score 20 |
-| Extended offline set | 16 tasks, 12 solved, 4 failed gracefully | 0 | score 39 |
+| Extended offline set | 16 tasks, 14 solved, 2 failed gracefully | 0 | score 46 |
 
-v5 live runs (gateway backend, `--max-workers 1`, read-only container, budget from
-`OJ_TOKEN_BUDGET=100000`). Details and the redacted command are in
+v5 live runs (gateway backend, read-only container, budget from
+`OJ_TOKEN_BUDGET=100000`). The current rows use 4 workers,
+`OJ_MAX_CONCURRENT_LLM=3` and `--cost-basis expected`; the earlier 1-worker runs are
+kept in the table below as history. Details and the redacted command are in
 `eval/results/live-v5.md`; the raw summaries are `eval/results/live-8.json` and
-`eval/results/live-16.json`.
+`eval/results/live-16.json` (historical 1-worker runs).
 
 | Live run | Result | Tokens spent | Notes |
 |---|---|---|---|
-| Official 8 tasks | 8 solved, 0 failed, 0 skipped, 0 errors | 461.3 (prompt 1433, completion 318) | score 20; `policy=value_cost_greedy`, `budget_source=env:OJ_TOKEN_BUDGET`, `llm_backend=openjiuwen-gateway` |
-| Extended 16 tasks | 14 solved, 2 failed, 0 skipped, 0 errors | 2350.8 (prompt 7028, completion 1648) | score 47; replans 15; coding 4/4 via LLM, data_analysis 4/4, math 4/4, search 2/4 |
+| **100-task stress** (replicated extended set, 4 workers) | **100/100 solved**, 0 failed, 0 skipped, 0 errors | **19537.5** (prompt 51355, completion 14402) | **score 336**, 100 s; **not the official 100 tasks** — the 16-task extended set replicated with unique ids; `reconsidered=3`, `final_accepted=100`, `replans=96`, `budget.reserved=0.0`, budget remaining 80462.5 |
+| Extended 16 tasks (4 workers) | **16/16 solved**, 0 failed, 0 skipped, 0 errors | **3421.8** (prompt 8378, completion 2584) | **score 54**, 89 s; `OJ_MAX_CONCURRENT_LLM=3`, `--cost-basis expected`, `budget.reserved=0.0`; one `429` retried successfully via `Retry-After` |
+| Extended 16 tasks, `--model qwen3.8-27b` (4 workers) | 15/16 solved, 1 failed, 0 skipped, 0 errors | **9251.7** (prompt 15747, completion 7677) | score 50, 119 s; `coding_0008` failed ("LLM did not return a usable full-file patch"); same 16 tasks, 4 workers, gateway, `budget=100000` |
+| Official 8 tasks (4 workers) | **8/8 solved**, 0 failed, 0 skipped, 0 errors | **454.3** (prompt 1433, completion 311) | **score 20**, 38 s; no `429` |
+| Official 8 tasks (history, 1 worker) | 8 solved, 0 failed, 0 skipped, 0 errors | 461.3 (prompt 1433, completion 318) | score 20; `policy=value_cost_greedy`, `budget_source=env:OJ_TOKEN_BUDGET`, `llm_backend=openjiuwen-gateway` |
+| Extended 16 tasks (history, 1 worker) | 14 solved, 2 failed, 0 skipped, 0 errors | 2350.8 (prompt 7028, completion 1648) | score 47; pre-search-fix run (search 2/4 at that time); coding 4/4 via LLM, data_analysis 4/4, math 4/4 |
+
+**100-task stress (replicated set, not the official 100 tasks).** The 16-task extended set
+was copied and replicated with unique `task_id`s until 100 tasks existed, then run live with
+4 workers, `OJ_MAX_CONCURRENT_LLM=3` and `budget=100000`. Result: **100/100 solved, score
+336, 19537.5 units (prompt 51355, completion 14402), 100 s, `reconsidered=3`,
+`final_accepted=100`, `replans=96`, 0 failed / 0 skipped / 0 errors**. Per type: coding
+28/28, data_analysis 24/24, math 24/24, search 24/24. Before the replan fix the same set
+gave 96/100 (4 `reject:cost`), score 328, 15718.2 units. The initial estimator expected
+coding cost ~3.9k versus an actual ~500–600, so the replan now re-estimates all unsubmitted
+tasks and can re-accept tasks it rejected earlier. This is a stress test of planning and
+budget behaviour, not a claim about the official task set.
 
 The gateway path is **proven with real proxy calls**: `scripts/sdk_smoke.py` answered
 for all four allowed aliases (`qwen3.8-27b` 2468.3 ms in56/out27/reasoning23;
@@ -552,6 +577,11 @@ for all four allowed aliases (`qwen3.8-27b` 2468.3 ms in56/out27/reasoning23;
 through the same backend. Credentials were supplied only through
 `LLM_BASE_URL` / `LLM_API_KEY` at run time and are **not committed**; the runs used the
 organizer proxy, so they are reproducible only with organizer credentials.
+
+The default model stays `qwen3.6-35b-a3b-noreason`: on the same 16 extended tasks
+`--model qwen3.8-27b` scored lower (50 vs 54), cost more than twice the tokens (9251.7 vs
+3421.8) and took longer (119 s vs 89 s), and it failed `coding_0008` on the full-file patch
+format — so the stronger model is not worth the cost or latency.
 
 The v4 live-run table below is **historical**. Those runs used the v4
 stdlib/openjiuwen path, not the v5 gateway, and were **not re-verified in v5**.
@@ -563,10 +593,12 @@ It is kept for reference only.
 | Live container, explicit `--llm-backend openjiuwen --max-workers 1` | 8/8 solved | 454.3 (prompt 1433, completion 311) | score 20, ~5.3 s; stdout single JSON; stderr only `LLM backend: openjiuwen` |
 | Live container, exact official invocation (`--tasks-dir` only; default auto, max-workers=4) | 8/8 solved | 1162.7 (prompt 2857, completion 877) | score 20, 16.9 s; `llm_backend=openjiuwen`, requested `auto`; 4 proxy calls; `coding_0003` needed 3 repair iterations; concurrency safe, no event-loop error |
 
-Measured v5 live result: 8/8 official tasks solved for score 20 and 14/16 extended
-tasks for score 47, with 0 errors. `search_0006` and `search_0007` remain the only
-extended-set failures (multi-hop relation chains; no `answer.txt` is written for them).
-Credentials are not committed; the runs used the organizer proxy with
+Measured v5 live result: **8/8 official tasks for score 20** (454.3 units, 38 s) and
+**16/16 extended tasks for score 54** (3421.8 units, 89 s), with 0 errors, both at
+`--max-workers 4`. The live gateway also retries `429`/`5xx` with `Retry-After` behind an
+LLM semaphore of 3 (`OJ_MAX_CONCURRENT_LLM=3`), so one `429` during the 16-task run was
+retried without losing the task, and the planner now uses `--cost-basis expected` by
+default. Credentials are not committed; the runs used the organizer proxy with
 `LLM_BASE_URL` / `LLM_API_KEY` from the environment.
 
 The exact official invocation is just:

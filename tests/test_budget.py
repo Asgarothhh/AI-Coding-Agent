@@ -308,6 +308,49 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertLessEqual(ledger.spent + ledger.reserved, ledger.total)
 
 
+class ReservedResidueTests(unittest.TestCase):
+    """Float residue in the reserved counter must not survive a settle."""
+
+    def test_settle_clamps_float_residue_to_exact_zero(self) -> None:
+        ledger = BudgetLedger(10_000.0)
+        # Eight overlapping reservations of x.1 cost units: straight double
+        # arithmetic leaves ~-4.4e-16 behind (the live run showed 4.5e-13).
+        handles = [ledger.reserve(f"r{index}", index + 1, 0) for index in range(8)]
+        usage = TokenUsage(input_tokens=0, output_tokens=1, total_cost=1.0)
+        for handle in handles:
+            ledger.settle(handle, usage)
+
+        self.assertEqual(ledger.reserved, 0.0)
+        self.assertLessEqual(ledger.spent + ledger.reserved, ledger.total)
+        self.assertEqual(ledger.remaining, ledger.total - ledger.spent)
+
+    def test_overlapping_pairs_leave_no_residue(self) -> None:
+        ledger = BudgetLedger(10_000.0)
+        usage = TokenUsage(input_tokens=0, output_tokens=1, total_cost=1.0)
+        for index in range(50):
+            first = ledger.reserve(f"a{index}", 1, 0)
+            second = ledger.reserve(f"b{index}", 2, 0)
+            ledger.settle(first, usage)
+            ledger.settle(second, usage)
+        self.assertEqual(ledger.reserved, 0.0)
+        self.assertLessEqual(ledger.spent + ledger.reserved, ledger.total)
+
+    def test_release_clamps_float_residue_too(self) -> None:
+        ledger = BudgetLedger(1_000.0)
+        first = ledger.reserve("a", 1, 0)
+        second = ledger.reserve("b", 2, 0)
+        ledger.release(first)
+        ledger.release(second)
+        self.assertEqual(ledger.reserved, 0.0)
+
+    def test_real_reservation_is_not_clamped_away(self) -> None:
+        ledger = BudgetLedger(100.0)
+        ledger.reserve("held", 0, 1)
+        self.assertEqual(ledger.reserved, 1.0)
+        ledger.reserve("tiny", 0, 0)  # amount 0.0, still a valid reservation
+        self.assertEqual(ledger.reserved, 1.0)
+
+
 class BudgetProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.empty_env: dict[str, str] = {}

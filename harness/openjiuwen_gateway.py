@@ -13,7 +13,15 @@ v5.0, sections 5.2, 5.3, 5.4, 4.2 and 11.4:
   per request, so reasoning tokens cannot be counted twice here;
 * an optional budget ledger reserves before the call, settles afterwards and
   releases on a failed call.  Missing ledger methods are a configuration error,
-  never a silently skipped accounting step.
+  never a silently skipped accounting step;
+* one process-wide semaphore (``OJ_MAX_CONCURRENT_LLM``, default 3) caps the
+  number of simultaneous SDK invocations across every gateway instance, because
+  the proxy account rejects the fourth parallel request with HTTP 429
+  (``потолок тарифа 3``);
+* transient failures (429, 5xx, timeouts) are retried with exponential backoff
+  and ``Retry-After`` support (``OJ_LLM_MAX_RETRIES``, default 3).  Auth and
+  other 4xx errors are never retried, and a rate-limited call is never settled
+  as a paid call.
 
 The persistent background event loop mirrors
 :class:`harness.ojiuwen_llm.OpenJiuwenLLMClient`: the OpenAI async client caches
@@ -25,10 +33,12 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import email.utils
 import importlib
 import inspect
 import logging
 import os
+import random
 import threading
 import time
 import uuid
@@ -48,11 +58,14 @@ from .usage import TokenUsage
 
 __all__ = [
     "ALLOWED_MODELS",
+    "DEFAULT_LLM_MAX_RETRIES",
+    "DEFAULT_MAX_CONCURRENT_LLM",
     "GatewayBudgetError",
     "GatewayChatAdapter",
     "GatewayConfigError",
     "GatewayError",
     "GatewayModelSpec",
+    "GatewayRateLimitError",
     "GatewayUnavailableError",
     "LLMResult",
     "OpenJiuwenGateway",
@@ -80,6 +93,62 @@ SDK_INSTALL_HINT = (
     "the gateway never falls back to stdlib/HTTP or another endpoint"
 )
 
+# -- concurrency and retry defaults (env: OJ_MAX_CONCURRENT_LLM / OJ_LLM_MAX_RETRIES)
+# The proxy account allows three parallel requests; the fourth is answered with
+# HTTP 429 "потолок тарифа 3".  The cap is process-wide, not per gateway.
+DEFAULT_MAX_CONCURRENT_LLM = 3
+MIN_MAX_CONCURRENT_LLM = 1
+MAX_MAX_CONCURRENT_LLM = 10
+
+DEFAULT_LLM_MAX_RETRIES = 3
+MAX_LLM_MAX_RETRIES = 10
+RETRY_BACKOFF_BASE_SECONDS = 1.0
+RETRY_BACKOFF_FACTOR = 2.0
+RETRY_BACKOFF_MAX_SECONDS = 8.0
+RETRY_JITTER_RATIO = 0.25
+RETRY_AFTER_MAX_SECONDS = 120.0
+
+# Statuses worth another attempt.  429 is the proxy tariff ceiling, 408/409/425
+# are request-timing hiccups and 5xx is a server-side transient failure.
+RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+_RETRYABLE_NAME_HINTS = (
+    "ratelimit",
+    "rate_limit",
+    "toomanyrequests",
+    "timeout",
+    "timedout",
+    "connectionerror",
+    "apiconnection",
+    "internalserver",
+    "serviceunavailable",
+    "overloaded",
+    "temporarilyunavailable",
+)
+_RETRYABLE_MESSAGE_HINTS = (
+    "rate limit",
+    "rate_limit",
+    "ratelimit",
+    "too many requests",
+    "потолок тарифа",
+    "status code 429",
+    "error code: 429",
+    "http 429",
+    " 429",
+    "429:",
+    "timed out",
+    "timeout",
+    "deadline exceeded",
+    "temporarily unavailable",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "internal server error",
+    "connection reset",
+    "connection aborted",
+    "connection refused",
+)
+
 _MESSAGE_ROLES = frozenset({"system", "user", "assistant", "tool"})
 
 
@@ -97,6 +166,10 @@ class GatewayUnavailableError(GatewayError):
 
 class GatewayBudgetError(GatewayError):
     """The ledger refused or could not reserve budget for the request."""
+
+
+class GatewayRateLimitError(GatewayError):
+    """The proxy kept rejecting the request with HTTP 429 after all retries."""
 
 
 @runtime_checkable
@@ -170,6 +243,23 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None or raw == "":
         return default
     return raw.strip().lower() not in {"0", "false", "no", "off", "n"}
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read a clamped integer from the environment (invalid values log once)."""
+
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        log.warning("ignoring invalid %s=%r; using %d", name, raw, default)
+        return default
+    clamped = max(minimum, min(maximum, value))
+    if clamped != value:
+        log.warning("%s=%d is out of range [%d, %d]; using %d", name, value, minimum, maximum, clamped)
+    return clamped
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -259,6 +349,248 @@ def _signature_names(method: Any) -> tuple[list[str], set[str]]:
     if names and names[0] in {"self", "cls"}:
         names = names[1:]
     return names, set(names)
+
+
+# -- process-wide concurrency cap --------------------------------------------
+_SEMAPHORE_LOCK = threading.Lock()
+_SEMAPHORES: dict[int, threading.BoundedSemaphore] = {}
+
+
+def concurrency_limit(explicit: int | None = None) -> int:
+    """Resolve ``OJ_MAX_CONCURRENT_LLM`` (default 3, clamped to 1..10)."""
+
+    if explicit is not None:
+        if isinstance(explicit, bool) or not isinstance(explicit, int) or explicit < 1:
+            raise GatewayConfigError("max_concurrent must be a positive integer")
+        return max(MIN_MAX_CONCURRENT_LLM, min(MAX_MAX_CONCURRENT_LLM, explicit))
+    return _env_int(
+        "OJ_MAX_CONCURRENT_LLM",
+        DEFAULT_MAX_CONCURRENT_LLM,
+        minimum=MIN_MAX_CONCURRENT_LLM,
+        maximum=MAX_MAX_CONCURRENT_LLM,
+    )
+
+
+def _semaphore_for(limit: int) -> threading.BoundedSemaphore:
+    """Return the shared semaphore for ``limit``.
+
+    Keyed by the limit so every gateway instance in this process that resolves
+    the same ``OJ_MAX_CONCURRENT_LLM`` shares one counter.  ``BoundedSemaphore``
+    turns an accidental double release into an error instead of silently
+    widening the cap.
+    """
+
+    with _SEMAPHORE_LOCK:
+        semaphore = _SEMAPHORES.get(limit)
+        if semaphore is None:
+            semaphore = threading.BoundedSemaphore(limit)
+            _SEMAPHORES[limit] = semaphore
+        return semaphore
+
+
+# -- transient-error classification ------------------------------------------
+_NON_RETRYABLE_NAME_HINTS = (
+    "authentication",
+    "permission",
+    "unauthorized",
+    "forbidden",
+    "badrequest",
+    "invalidrequest",
+    "notfound",
+    "configuration",
+)
+_NON_RETRYABLE_MESSAGE_HINTS = (
+    "unauthorized",
+    "invalid api key",
+    "authentication",
+    "permission denied",
+    "invalid_request_error",
+    "model not found",
+    "not allowed",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _RetryInfo:
+    """What the retry policy needs to know about one SDK exception."""
+
+    retryable: bool
+    status: int | None = None
+    retry_after: float | None = None
+    definitely_not_sent: bool = False
+
+
+def _iter_exception_chain(exc: BaseException) -> list[BaseException]:
+    """Flatten ``__cause__``/``__context__`` (SDK wrapping hides the status)."""
+
+    seen: set[int] = set()
+    chain: list[BaseException] = []
+    stack: list[BaseException] = [exc]
+    while stack:
+        current = stack.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        for attribute in ("__cause__", "__context__"):
+            nested = getattr(current, attribute, None)
+            if isinstance(nested, BaseException):
+                stack.append(nested)
+        response = getattr(current, "response", None)
+        if isinstance(response, BaseException):
+            stack.append(response)
+    return chain
+
+
+def _object_candidates(exc: BaseException) -> list[Any]:
+    candidates: list[Any] = [exc]
+    response = getattr(exc, "response", None)
+    if response is not None and not isinstance(response, BaseException):
+        candidates.append(response)
+    return candidates
+
+
+def _status_code_of(value: Any) -> int | None:
+    for name in ("status_code", "status", "http_status", "code"):
+        raw = getattr(value, name, None)
+        if raw is None or isinstance(raw, bool):
+            continue
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, str) and raw.strip().isdigit():
+            return int(raw.strip())
+    return None
+
+
+def _headers_of(value: Any) -> Mapping[str, Any] | None:
+    for name in ("headers", "response_headers"):
+        headers = getattr(value, name, None)
+        if isinstance(headers, Mapping):
+            return headers
+        if headers is not None and hasattr(headers, "get"):
+            return headers  # type: ignore[return-value]
+    return None
+
+
+def _parse_retry_after(raw: Any) -> float | None:
+    """Parse a ``Retry-After`` value: delta-seconds or an HTTP date."""
+
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        return max(0.0, min(value, RETRY_AFTER_MAX_SECONDS))
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return max(0.0, min(float(text), RETRY_AFTER_MAX_SECONDS))
+    except ValueError:
+        pass
+    try:
+        moment = email.utils.parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if moment is None:  # pragma: no cover - parsedate returns None on failure
+        return None
+    delta = moment.timestamp() - time.time()
+    return max(0.0, min(delta, RETRY_AFTER_MAX_SECONDS))
+
+
+def _retry_after_of(chain: Sequence[BaseException]) -> float | None:
+    for item in chain:
+        for candidate in _object_candidates(item):
+            raw = getattr(candidate, "retry_after", None)
+            parsed = _parse_retry_after(raw)
+            if parsed is not None:
+                return parsed
+            headers = _headers_of(candidate)
+            if headers is not None:
+                try:
+                    raw = headers.get("retry-after")
+                    if raw is None:
+                        raw = headers.get("Retry-After")
+                except Exception:  # noqa: BLE001 - exotic header containers
+                    raw = None
+                parsed = _parse_retry_after(raw)
+                if parsed is not None:
+                    return parsed
+    return None
+
+
+def classify_error(exc: BaseException) -> _RetryInfo:
+    """Decide whether an SDK exception is a transient failure worth retrying.
+
+    Status codes win over heuristics: 429/5xx retry, every other 4xx does not
+    (auth, configuration and validation errors are permanent).  When the SDK
+    hides the status, the exception class name and message are inspected.
+    """
+
+    chain = _iter_exception_chain(exc)
+    status: int | None = None
+    for item in chain:
+        for candidate in _object_candidates(item):
+            status = _status_code_of(candidate)
+            if status is not None:
+                break
+        if status is not None:
+            break
+
+    retry_after = _retry_after_of(chain)
+
+    if status is not None:
+        if status in RETRYABLE_STATUS or status >= 500:
+            return _RetryInfo(True, status, retry_after, definitely_not_sent=True)
+        if 400 <= status < 500:
+            return _RetryInfo(False, status, retry_after, definitely_not_sent=False)
+
+    names = [type(item).__name__.lower() for item in chain]
+    if any(hint in name for name in names for hint in _NON_RETRYABLE_NAME_HINTS):
+        return _RetryInfo(False, status, retry_after, definitely_not_sent=False)
+
+    if any(hint in name for name in names for hint in _RETRYABLE_NAME_HINTS):
+        return _RetryInfo(True, status, retry_after, definitely_not_sent=True)
+
+    messages = [str(item).lower() for item in chain]
+    if any(hint in message for message in messages for hint in _NON_RETRYABLE_MESSAGE_HINTS):
+        return _RetryInfo(False, status, retry_after, definitely_not_sent=False)
+    if any(hint in message for message in messages for hint in _RETRYABLE_MESSAGE_HINTS):
+        return _RetryInfo(True, status, retry_after, definitely_not_sent=True)
+
+    return _RetryInfo(False, status, retry_after, definitely_not_sent=False)
+
+
+def retry_delay(attempt: int, retry_after: float | None = None) -> float:
+    """Backoff before retry ``attempt`` (0-based): 1 s, 2 s, 4 s + jitter."""
+
+    if retry_after is not None:
+        return max(0.0, min(retry_after, RETRY_AFTER_MAX_SECONDS))
+    base = RETRY_BACKOFF_BASE_SECONDS * (RETRY_BACKOFF_FACTOR ** max(0, attempt))
+    base = min(base, RETRY_BACKOFF_MAX_SECONDS)
+    return base + random.uniform(0.0, base * RETRY_JITTER_RATIO)
+
+
+def _is_rate_limited(exc: BaseException) -> bool:
+    """True when the failure is the proxy tariff ceiling rather than a 5xx."""
+
+    chain = _iter_exception_chain(exc)
+    for item in chain:
+        for candidate in _object_candidates(item):
+            if _status_code_of(candidate) == 429:
+                return True
+    blob = " ".join(
+        [type(item).__name__ for item in chain] + [str(item) for item in chain]
+    ).lower()
+    return any(
+        hint in blob
+        for hint in (
+            "ratelimit",
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "потолок тарифа",
+        )
+    )
 
 
 # -- lazy SDK import ----------------------------------------------------------
@@ -520,6 +852,9 @@ class OpenJiuwenGateway:
         model_factory: ModelFactory | None = None,
         normalizer: Any | None = None,
         runner: SyncRunner | None = None,
+        max_retries: int | None = None,
+        max_concurrent: int | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._base_url = self._resolve_text(base_url, "LLM_BASE_URL")
         self._api_key = self._resolve_text(api_key, "LLM_API_KEY")
@@ -541,6 +876,22 @@ class OpenJiuwenGateway:
         self._normalizer = normalizer
         self._normalizer_resolved = normalizer is not None
         self._runner = runner
+
+        self._max_concurrent = concurrency_limit(max_concurrent)
+        self._semaphore = _semaphore_for(self._max_concurrent)
+        if max_retries is not None:
+            if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
+                raise GatewayConfigError("max_retries must be a non-negative integer")
+            self._max_retries = min(max_retries, MAX_LLM_MAX_RETRIES)
+        else:
+            self._max_retries = _env_int(
+                "OJ_LLM_MAX_RETRIES",
+                DEFAULT_LLM_MAX_RETRIES,
+                minimum=0,
+                maximum=MAX_LLM_MAX_RETRIES,
+            )
+        self._sleep: Callable[[float], None] = sleep or time.sleep
+
         self._loop = _PersistentLoop()
         self._models: dict[str, Any] = {}
         self._models_lock = threading.RLock()
@@ -582,6 +933,16 @@ class OpenJiuwenGateway:
     @property
     def closed(self) -> bool:
         return self._closed
+
+    @property
+    def max_concurrent(self) -> int:
+        """Process-wide SDK invocation cap shared with other gateway instances."""
+
+        return self._max_concurrent
+
+    @property
+    def max_retries(self) -> int:
+        return self._max_retries
 
     def __repr__(self) -> str:  # never include api_key or the proxy URL
         return (
@@ -772,7 +1133,77 @@ class OpenJiuwenGateway:
                 result = await result
             return result
 
-        return self._run(call())
+        # The proxy account rejects the 4th simultaneous request with 429
+        # "потолок тарифа 3", so the slot is held only while the SDK call is in
+        # flight and always released, even when the invoke raises.
+        with self._semaphore:
+            return self._run(call())
+
+    def _invoke_with_retries(
+        self,
+        model_obj: Any,
+        messages: list[dict[str, str]],
+        max_output_tokens: int,
+        *,
+        model_name: str,
+        request_key: str,
+    ) -> Any:
+        """Invoke the SDK, retrying only transient failures.
+
+        The budget reservation belongs to the caller and stays valid across
+        every attempt, so retries never reserve twice and one success settles
+        exactly once.
+        """
+
+        attempt = 0
+        while True:
+            try:
+                return self._invoke(model_obj, messages, max_output_tokens)
+            except Exception as exc:
+                info = classify_error(exc)
+                if not info.retryable or attempt >= self._max_retries:
+                    if info.retryable:
+                        detail = (
+                            f"HTTP {info.status}"
+                            if info.status is not None
+                            else type(exc).__name__
+                        )
+                        error_cls = (
+                            GatewayRateLimitError
+                            if _is_rate_limited(exc)
+                            else GatewayError
+                        )
+                        raise error_cls(
+                            f"openJiuwen invoke failed for model {model_name!r} "
+                            f"after {attempt + 1} attempt(s): {detail} "
+                            f"({type(exc).__name__}: {exc}); retries exhausted, "
+                            "no silent model fallback"
+                        ) from exc
+                    raise
+
+                delay = retry_delay(attempt, info.retry_after)
+                log.warning(
+                    "gateway transient failure request_id=%s model=%s attempt=%d/%d "
+                    "status=%s retry_in=%.2fs: %s: %s",
+                    request_key,
+                    model_name,
+                    attempt + 1,
+                    self._max_retries + 1,
+                    info.status if info.status is not None else "-",
+                    delay,
+                    type(exc).__name__,
+                    self._redact(str(exc)),
+                )
+                self._sleep(delay)
+                attempt += 1
+
+    def _redact(self, text: str) -> str:
+        """Strip the API key and proxy URL from text that may be logged."""
+
+        for secret in (self._api_key, self._base_url, self._base_url.rstrip("/")):
+            if secret:
+                text = text.replace(secret, "<redacted>")
+        return text
 
     # -- public API ----------------------------------------------------------
     def preflight(self) -> None:
@@ -803,6 +1234,10 @@ class OpenJiuwenGateway:
         ``ledger`` overrides the gateway-level ledger for this call.  When a
         ledger is present, ``reserve`` runs before the request, ``settle`` after
         the normalized usage is available, and ``release`` on a failed call.
+
+        The reservation is created once and survives transient retries; only a
+        successful response settles it, and an exhausted retry chain releases
+        it as ``definitely_not_sent`` when no completion was produced.
         """
 
         chosen_model = self._validate_model(model)
@@ -840,17 +1275,25 @@ class OpenJiuwenGateway:
                 )
 
         try:
-            assistant = self._invoke(model_obj, normalised_messages, limit)
+            assistant = self._invoke_with_retries(
+                model_obj,
+                normalised_messages,
+                limit,
+                model_name=chosen_model,
+                request_key=request_key,
+            )
         except BaseException as exc:
+            retry_info = classify_error(exc) if isinstance(exc, Exception) else _RetryInfo(False)
             if active_ledger is not None:
-                # The SDK error does not prove the proxy did not charge, but the
-                # gateway contract requires the reservation to be released on a
-                # failed call; spec-style ledgers receive definitely_not_sent=False.
+                # A rate-limited/transient failure means the proxy produced no
+                # completion, so no budget was spent and the reservation is
+                # released as definitely-not-sent.  Unknown failures stay
+                # conservative: they may have been charged.
                 _ledger_release(
                     active_ledger,
                     request_key,
                     reservation,
-                    definitely_not_sent=False,
+                    definitely_not_sent=retry_info.definitely_not_sent,
                 )
             if isinstance(exc, GatewayError):
                 raise

@@ -15,7 +15,7 @@ import math
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from harness.budget import BudgetConfigurationError, BudgetLedger, BudgetProvider
 from harness.llm import (
@@ -26,7 +26,7 @@ from harness.llm import (
     build_llm_client,
 )
 from harness.mock_proxy import MockProxyServer
-from harness.policy import POLICY_NAMES
+from harness.policy import COST_BASES, POLICY_NAMES, CostBasis
 from harness.runner import (
     DEFAULT_TIME_LIMIT,
     EXTERNAL_TIMEOUT_SECONDS,
@@ -66,6 +66,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=POLICY_NAMES,
         default="value_cost_greedy",
         help="task selection policy (default: value_cost_greedy)",
+    )
+    parser.add_argument(
+        "--cost-basis",
+        choices=COST_BASES,
+        default="expected",
+        help=(
+            "planned cost basis: expected (default; rely on the ledger for "
+            "hard safety) or upper (conservative upper-bound planning)"
+        ),
     )
     parser.add_argument(
         "--planner-reserve",
@@ -229,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             escalation_model=escalation_model,
             llm=llm,
             policy=args.policy,
+            cost_basis=cast("CostBasis", args.cost_basis),
             planner_reserve=args.planner_reserve,
             ledger=ledger,
         )

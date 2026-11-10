@@ -8,7 +8,9 @@ sent and settle the reservation against the actual usage afterwards::
 
 The ledger keeps ``spent + reserved <= total`` for every granted reservation.
 Settling may charge more than the estimate (a response cannot be un-sent);
-after that, subsequent reservations see the real remaining budget.
+after that, subsequent reservations see the real remaining budget.  Float
+residue left in the reserved counter by ``settle``/``release`` is folded back
+to exact zero (below ``1e-6``) so the invariant stays readable.
 
 Budget resolution from the environment lives in :class:`BudgetProvider` so the
 startup path has exactly one place that can invent a number.
@@ -83,6 +85,12 @@ def _finite_non_negative(name: str, value: float) -> float:
     if not math.isfinite(number) or number < 0:
         raise ValueError(f"{name} must be a finite non-negative number")
     return number
+
+
+# Float arithmetic on token/cost units can leave residues such as 4.5e-13 in
+# the reserved counter after the matching reservation is released.  Anything
+# below this epsilon is bookkeeping noise, not real reserved budget.
+_RESERVED_EPSILON = 1e-6
 
 
 def _coerce_usage(usage: TokenUsage | Mapping[str, Any] | Any) -> TokenUsage:
@@ -287,6 +295,12 @@ class BudgetLedger:
     def _remaining_locked(self) -> float:
         return self._total - self._spent - self._reserved
 
+    def _clamp_reserved_locked(self) -> None:
+        """Fold float residue in the reserved counter back to exact zero."""
+
+        if abs(self._reserved) < _RESERVED_EPSILON:
+            self._reserved = 0.0
+
     def can_start_task(self) -> bool:
         """True when another task may start under the global budget."""
 
@@ -393,6 +407,7 @@ class BudgetLedger:
                 self._raise_unknown(request_id, "settle")
             assert active is not None  # for type checkers
             self._reserved -= active.amount
+            self._clamp_reserved_locked()
             self._active.pop(request_id, None)
             self._closed[request_id] = "settled"
             self._spent += actual
@@ -412,6 +427,7 @@ class BudgetLedger:
                 self._raise_unknown(request_id, "release")
             assert active is not None
             self._reserved -= active.amount
+            self._clamp_reserved_locked()
             self._active.pop(request_id, None)
             self._closed[request_id] = "released"
             return active.amount

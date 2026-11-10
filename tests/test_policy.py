@@ -10,6 +10,7 @@ from harness.budget import BudgetLedger
 from harness.estimator import CostEstimate
 from harness.policy import (
     ACTION_REASONS,
+    EXPECTED_COST_FLOOR,
     POLICY_NAMES,
     Decision,
     PolicyConfig,
@@ -449,6 +450,186 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(summary.accepted, 1)
         self.assertEqual(summary.coverage, 1.0)
         self.assertEqual(dict(summary.reasons)["reject:impossible"], 1)
+
+
+class CostBasisTests(unittest.TestCase):
+    def test_bases_select_different_sets_when_upper_is_much_larger(self) -> None:
+        tasks = [SimTask("a", reward=10.0), SimTask("b", reward=60.0)]
+        estimates = {
+            "a": estimate(900.0, expected=100.0),
+            "b": estimate(900.0, expected=700.0),
+        }
+        common = dict(
+            policy="value_cost_greedy",
+            remaining=1000.0,
+            total_budget=1000.0,
+            time_left=10_000.0,
+            impossible_ids=frozenset(),
+        )
+        expected_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="expected"),
+            **common,
+        )
+        upper_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="upper"),
+            **common,
+        )
+        # 100 + 700 fits the 950 capacity; 900 + 900 does not.
+        self.assertEqual(accepted_ids(expected_entries), ["a", "b"])
+        self.assertEqual(accepted_ids(upper_entries), ["b"])
+        self.assertNotEqual(
+            set(accepted_ids(expected_entries)),
+            set(accepted_ids(upper_entries)),
+        )
+        expected_by_id = decisions_by_id(expected_entries)
+        upper_by_id = decisions_by_id(upper_entries)
+        self.assertEqual(expected_by_id["a"].planned_cost, 100.0)
+        self.assertEqual(upper_by_id["a"].planned_cost, 900.0)
+        self.assertEqual(upper_by_id["a"].action, "reject_cost")
+
+    def test_expected_basis_accepts_more_tasks_under_the_same_budget(self) -> None:
+        tasks = [SimTask(f"t{i}", reward=float(i + 1)) for i in range(5)]
+        estimates = {
+            task.task_id: estimate(1000.0, expected=200.0) for task in tasks
+        }
+        common = dict(
+            policy="accept_all",
+            remaining=1000.0,
+            total_budget=1000.0,
+            time_left=10_000.0,
+            impossible_ids=frozenset(),
+        )
+        expected_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="expected"),
+            **common,
+        )
+        upper_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="upper"),
+            **common,
+        )
+        # Capacity is 950: four 200-unit tasks fit, no 1000-unit upper task does.
+        self.assertEqual(len(accepted_ids(expected_entries)), 4)
+        self.assertEqual(accepted_ids(upper_entries), [])
+        self.assertGreater(
+            len(accepted_ids(expected_entries)),
+            len(accepted_ids(upper_entries)),
+        )
+
+    def test_upper_basis_remains_available_and_is_conservative(self) -> None:
+        tasks = [SimTask("a", reward=10.0)]
+        estimates = {"a": estimate(2000.0, expected=100.0)}
+        common = dict(
+            policy="value_cost_greedy",
+            remaining=1000.0,
+            total_budget=1000.0,
+            time_left=10_000.0,
+            impossible_ids=frozenset(),
+        )
+        expected_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="expected"),
+            **common,
+        )
+        upper_entries = plan_entries(
+            tasks,
+            estimates,
+            config=PolicyConfig(cost_basis="upper"),
+            **common,
+        )
+        self.assertEqual(accepted_ids(expected_entries), ["a"])
+        self.assertEqual(accepted_ids(upper_entries), [])
+        self.assertEqual(
+            decisions_by_id(upper_entries)["a"].reason, "reject:cost"
+        )
+
+    def test_expected_basis_has_no_per_task_cap(self) -> None:
+        tasks = [SimTask("whole", reward=1.0)]
+        estimates = {"whole": estimate(5000.0, expected=950.0)}
+        entries = plan_entries(
+            tasks,
+            estimates,
+            policy="value_cost_greedy",
+            remaining=1000.0,
+            total_budget=1000.0,
+            time_left=10_000.0,
+            config=PolicyConfig(cost_basis="expected", planning_reserve_rate=0.0),
+            impossible_ids=frozenset(),
+        )
+        self.assertEqual(accepted_ids(entries), ["whole"])
+
+    def test_expected_floor_applies_only_to_positive_costs(self) -> None:
+        tasks = [
+            SimTask("tiny", reward=1.0),
+            SimTask("det", reward=1.0, task_type="math"),
+            SimTask("llm_free", reward=1.0),
+        ]
+        estimates = {
+            "tiny": estimate(100.0, expected=1e-6),
+            "det": estimate(0.0, expected=0.0, solver="math", output_tokens=0.0),
+            "llm_free": estimate(100.0, expected=0.0),
+        }
+        entries = plan_entries(
+            tasks,
+            estimates,
+            policy="accept_all",
+            remaining=1000.0,
+            total_budget=1000.0,
+            time_left=10_000.0,
+            impossible_ids=frozenset(),
+        )
+        decisions = decisions_by_id(entries)
+        self.assertEqual(decisions["tiny"].planned_cost, EXPECTED_COST_FLOOR)
+        self.assertEqual(decisions["llm_free"].planned_cost, EXPECTED_COST_FLOOR)
+        self.assertEqual(decisions["det"].planned_cost, 0.0)
+
+    def test_invariant_holds_for_both_bases_and_all_policies(self) -> None:
+        tasks = [SimTask(f"t{i}", reward=float(i + 1)) for i in range(6)]
+        expected_costs = [80.0, 150.0, 240.0, 330.0, 460.0, 700.0]
+        upper_costs = [900.0, 1100.0, 1300.0, 1600.0, 2100.0, 3200.0]
+        estimates = {
+            task.task_id: estimate(upper, expected=expected)
+            for task, expected, upper in zip(tasks, expected_costs, upper_costs)
+        }
+        for basis in ("expected", "upper"):
+            config = PolicyConfig(cost_basis=basis)  # type: ignore[arg-type]
+            for policy in POLICY_NAMES:
+                for budget in (500.0, 1000.0, 3000.0):
+                    with self.subTest(basis=basis, policy=policy, budget=budget):
+                        entries = plan_entries(
+                            tasks,
+                            estimates,
+                            policy=policy,
+                            remaining=budget,
+                            total_budget=budget,
+                            time_left=100_000.0,
+                            config=config,
+                            impossible_ids=frozenset(),
+                        )
+                        accepted = [
+                            entry.decision
+                            for entry in entries
+                            if entry.decision.accepted
+                        ]
+                        reserve = planning_reserve(
+                            budget, list(estimates.values()), config=config
+                        )
+                        self.assertLessEqual(
+                            sum(item.planned_cost for item in accepted),
+                            budget - reserve + 1e-6,
+                        )
+
+    def test_unknown_cost_basis_fails_fast(self) -> None:
+        with self.assertRaises(ValueError):
+            PolicyConfig(cost_basis="p90")  # type: ignore[arg-type]
 
 
 class ReplanTests(unittest.TestCase):

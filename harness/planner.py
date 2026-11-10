@@ -10,8 +10,10 @@ Two layers live here:
   ``replan``, the named policies and ``planning_reserve``.
 
 The decision layer converts a :class:`~harness.estimator.CostEstimate` into
-``v_i = reward_i * P_solve_i`` and ``c_i = upper_cost_i``, then respects the
-single global budget plus a separate time limit.  It never calls an LLM.
+``v_i = reward_i * P_solve_i`` and a planned cost ``c_i`` (the expected cost by
+default, or the conservative upper cost with ``cost_basis="upper"``), then
+respects the single global budget plus a separate time limit.  It never calls
+an LLM.
 """
 
 from __future__ import annotations
@@ -20,10 +22,13 @@ from dataclasses import dataclass
 
 from .policy import (
     ACTION_REASONS,
+    COST_BASES,
     DEFAULT_CONFIG,
     DEFAULT_POLICY,
+    EXPECTED_COST_FLOOR,
     POLICIES,
     POLICY_NAMES,
+    CostBasis,
     Decision,
     PlanEntry,
     PlanSummary,
@@ -45,11 +50,14 @@ from .triage import DEFAULT_THRESHOLD, TriageResult, triage
 
 __all__ = [
     "ACTION_REASONS",
+    "COST_BASES",
     "DEFAULT_CONFIG",
     "DEFAULT_POLICY",
+    "EXPECTED_COST_FLOOR",
     "DETERMINISTIC_TYPES",
     "POLICIES",
     "POLICY_NAMES",
+    "CostBasis",
     "Decision",
     "PlanEntry",
     "PlanItem",

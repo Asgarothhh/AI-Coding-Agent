@@ -6,7 +6,7 @@ task it turns a :class:`~harness.estimator.CostEstimate` plus a solve
 probability into an explicit :class:`Decision`::
 
     v_i = reward_i * P_solve_i          # expected score
-    c_i = upper_cost_i                  # risk-oriented planned cost
+    c_i = planned cost under cost_basis  # expected, or conservative upper
     t_i = heuristic wall-clock estimate
 
 The selection problem is::
@@ -15,6 +15,12 @@ The selection problem is::
     subject to sum(c_i * x_i) <= remaining - planning_reserve
                sum(t_i * x_i) <= time_left
                x_i in {0, 1}
+
+``cost_basis`` selects what ``c_i`` means.  ``expected`` (the default) plans
+with ``max(expected_cost, EXPECTED_COST_FLOOR)`` and relies on the budget
+ledger to enforce hard per-call safety; ``upper`` is the conservative mode and
+plans with ``upper_cost``.  A genuine zero-cost deterministic task stays at
+``0`` so it remains free at a zero budget.
 
 There is deliberately **one global budget**.  No per-task cap and no
 per-task token budget exists; a single task may consume the whole available
@@ -42,8 +48,9 @@ Policies
 ``value_cost_greedy``
     Sort by ``v_i / c_i`` descending (fallback recommended by section 8.1).
 ``knapsack_dp``
-    Discretised 0/1 knapsack over the upper costs, then execute the selected
-    set in ``v / c`` order.  It is bounded by ``MAX_KNAPSACK_STATES``.
+    Discretised 0/1 knapsack over the planned costs ``c_i``, then execute the
+    selected set in ``v / c`` order.  It is bounded by
+    ``MAX_KNAPSACK_STATES``.
 
 Replanning
 ----------
@@ -66,10 +73,13 @@ from .triage import DEFAULT_THRESHOLD, triage
 
 __all__ = [
     "ACTION_REASONS",
+    "COST_BASES",
     "DEFAULT_CONFIG",
     "DEFAULT_POLICY",
+    "EXPECTED_COST_FLOOR",
     "POLICIES",
     "POLICY_NAMES",
+    "CostBasis",
     "Decision",
     "PlanEntry",
     "PlanSummary",
@@ -92,6 +102,7 @@ log = logging.getLogger(__name__)
 Action = Literal["accept", "reject_cost", "reject_impossible", "reject_time"]
 Status = Literal["solvable", "uncertain", "impossible"]
 PolicyName = Literal["accept_all", "reward_sort", "value_cost_greedy", "knapsack_dp"]
+CostBasis = Literal["expected", "upper"]
 
 ACCEPT: Final[Action] = "accept"
 REJECT_COST: Final[Action] = "reject_cost"
@@ -107,6 +118,14 @@ ACTION_REASONS: Final[dict[Action, str]] = {
 }
 
 DEFAULT_POLICY: Final[PolicyName] = "value_cost_greedy"
+
+#: Cost-basis spellings accepted on the CLI and in :class:`PolicyConfig`.
+COST_BASES: Final[tuple[CostBasis, ...]] = ("expected", "upper")
+
+#: Floor for a positive expected cost.  It keeps a non-zero task from becoming
+#: effectively free in the ratio and knapsack arithmetic.  A genuine
+#: zero-cost deterministic task is exempt and stays free at a zero budget.
+EXPECTED_COST_FLOOR: Final = 1.0
 
 #: Deterministic task types (kept local so policy does not import planner and
 #: create a cycle).  This mirrors ``estimator.DETERMINISTIC_SOLVERS``.
@@ -137,6 +156,13 @@ class PolicyConfig:
     ``low_confidence_share`` is the fraction of low-confidence estimates that
     switches the planning reserve from 5% to 10%.  "Mostly low" is a strict
     majority (``> low_confidence_share``).
+
+    ``cost_basis`` chooses the planned cost ``c_i``:
+
+    * ``expected`` (default) uses ``max(expected_cost, EXPECTED_COST_FLOOR)``.
+      It avoids rejecting profitable work because a conservative upper bound
+      is far above the typical cost; hard safety remains the ledger's job.
+    * ``upper`` uses ``upper_cost`` and is the conservative planning mode.
     """
 
     probability_high: float = 0.7
@@ -146,6 +172,7 @@ class PolicyConfig:
     planning_reserve_rate: float = 0.05
     low_confidence_reserve_rate: float = 0.10
     low_confidence_share: float = 0.5
+    cost_basis: CostBasis = "expected"
     deterministic_time_seconds: float = 1.0
     llm_base_time_seconds: float = 10.0
     output_tokens_per_second: float = 10.0
@@ -175,6 +202,11 @@ class PolicyConfig:
                 raise ValueError(f"{name} must be finite and >= 0, got {value!r}")
         if float(self.output_tokens_per_second) <= 0.0:
             raise ValueError("output_tokens_per_second must be > 0")
+        if self.cost_basis not in COST_BASES:
+            raise ValueError(
+                f"cost_basis must be one of {', '.join(COST_BASES)}, "
+                f"got {self.cost_basis!r}"
+            )
 
     def probability_for(self, confidence: str) -> float:
         if confidence == "high":
@@ -196,7 +228,7 @@ class Decision:
     ``action`` is the machine-readable enum; ``reason`` is the explicit,
     deterministic tag from :data:`ACTION_REASONS`.  ``expected_reward`` is the
     expected value ``v_i`` of the task (0 for a provably impossible task), and
-    ``planned_cost`` is the risk-oriented upper cost ``c_i``.
+    ``planned_cost`` is the planned cost ``c_i`` under the configured basis.
     """
 
     action: Action
@@ -469,7 +501,7 @@ def _greedy_allocate(
 
 
 def _knapsack_select(candidates: Sequence[_Candidate], capacity: float) -> set[str]:
-    """Discretised 0/1 knapsack on ``upper_cost`` maximising expected value.
+    """Discretised 0/1 knapsack on the planned cost maximising expected value.
 
     Weights are ``ceil(cost / unit)`` so the discretised solution is always
     conservative: the true cost of a selected set cannot exceed the capacity.
@@ -616,11 +648,12 @@ def _coerce_estimates(
                 f"estimate for task {task_id!r} must be CostEstimate, "
                 f"got {type(estimate).__name__}"
             )
-        upper = float(estimate.upper_cost)
-        if not math.isfinite(upper) or upper < 0.0:
-            raise ValueError(
-                f"upper_cost for task {task_id!r} must be finite and >= 0, got {upper!r}"
-            )
+        for name in ("expected_cost", "upper_cost"):
+            value = float(getattr(estimate, name))
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(
+                    f"{name} for task {task_id!r} must be finite and >= 0, got {value!r}"
+                )
         result[task_id] = estimate
     return result
 
@@ -645,6 +678,26 @@ def _impossible_tasks(
         except (AttributeError, OSError, ValueError) as exc:  # pragma: no cover - defensive
             log.warning("triage failed for %s: %s", getattr(task, "task_id", "?"), exc)
     return flagged
+
+
+def _planned_cost(
+    estimate: CostEstimate,
+    basis: CostBasis,
+    *,
+    deterministic: bool,
+) -> float:
+    """Return ``c_i`` for the configured basis.
+
+    A genuine zero-cost task (deterministic solver) stays free; otherwise the
+    floor keeps a tiny expected cost from vanishing in ratios.
+    """
+
+    if basis == "upper":
+        return float(estimate.upper_cost)
+    expected = float(estimate.expected_cost)
+    if expected <= 0.0 and deterministic:
+        return 0.0
+    return max(expected, EXPECTED_COST_FLOOR)
 
 
 def _build_candidates(
@@ -673,9 +726,13 @@ def _build_candidates(
         )
         solver = _clean_name(estimate.solver)
         task_type = _clean_name(getattr(task, "task_type", ""))
+        deterministic = (
+            solver in DETERMINISTIC_TASK_TYPES
+            or task_type in DETERMINISTIC_TASK_TYPES
+        )
         if not feasible:
             status: Status = "impossible"
-        elif solver in DETERMINISTIC_TASK_TYPES or task_type in DETERMINISTIC_TASK_TYPES:
+        elif deterministic:
             status = "solvable"
         else:
             status = "uncertain"
@@ -688,7 +745,9 @@ def _build_candidates(
                 probability=probability,
                 probability_source=source,
                 value=value,
-                cost=float(estimate.upper_cost),
+                cost=_planned_cost(
+                    estimate, config.cost_basis, deterministic=deterministic
+                ),
                 time_cost=estimate_time(task, estimate, config=config),
                 status=status,
                 index=index,
@@ -735,8 +794,10 @@ def plan_entries(
     """Plan ``tasks`` under the single global budget and a separate time cap.
 
     ``remaining`` is what the ledger says is still available.  The planned
-    cost of accepted tasks is constrained by
-    ``sum(upper_cost) <= remaining - planning_reserve``.  Rejected tasks are
+    cost ``c_i`` of accepted tasks is constrained by
+    ``sum(c_i) <= remaining - planning_reserve``; ``c_i`` is the expected cost
+    by default and the conservative upper cost when ``cost_basis="upper"``.
+    Rejected tasks are
     returned after the accepted ones, in input order, so the accepted prefix
     is the execution order.
 

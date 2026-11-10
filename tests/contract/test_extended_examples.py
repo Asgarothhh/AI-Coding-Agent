@@ -1,10 +1,10 @@
 """Contract: the extended 16-task example set is planned and solved offline.
 
 ``examples/task-dir-extended`` is additive on top of the frozen 8-task
-``examples/task-dir`` baseline.  After the triage fix every one of its 16 tasks
-must be planned (nothing skipped as "no internet"), and the deterministic
-offline run with mutation repair must solve at least 12 of them for a score of
-39 or more without spending a single token.
+``examples/task-dir`` baseline.  After the triage and search fixes every one of
+its 16 tasks must be planned (nothing skipped as "no internet"), and the
+deterministic offline run with mutation repair must solve at least 14 of them
+for a score of 46 or more without spending a single token.
 
 All runs happen on a temporary copy, and the repository tree is fingerprinted
 before and after the test, so a stray ``answer.txt`` can never leak into the
@@ -38,11 +38,11 @@ REQUIRED_FIELDS = (
     "expected",
     "check",
 )
-EXPECTED_SOLVED = 12
-EXPECTED_SCORE = 39.0
-# These four need more than the deterministic mutation repair can do offline;
+EXPECTED_SOLVED = 14
+EXPECTED_SCORE = 46.0
+# These two need more than the deterministic mutation repair can do offline;
 # they must be reported as ``failed`` solutions, not as runner ``errors``.
-KNOWN_FAILURES = ("search_0006", "search_0007", "coding_0008", "coding_0009")
+KNOWN_FAILURES = ("coding_0008", "coding_0009")
 
 
 def _copy_tasks(destination: Path) -> Path:
