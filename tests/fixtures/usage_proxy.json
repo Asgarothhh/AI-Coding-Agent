@@ -1,0 +1,109 @@
+{
+  "_meta": {
+    "purpose": "Anonymized raw usage payloads for UsageNormalizer tests (spec 4.2).",
+    "source": "Collected from OpenAI-compatible proxy responses; identifiers and prompts removed.",
+    "contains_secrets": false,
+    "contract": {
+      "input": "input_tokens or prompt_tokens",
+      "output": "output_tokens or completion_tokens",
+      "reasoning": "reasoning_tokens or completion_tokens_details.reasoning_tokens or output_tokens_details.reasoning_tokens",
+      "cost": "output_tokens + input_tokens / 10"
+    }
+  },
+  "cases": [
+    {
+      "id": "openai_prompt_completion",
+      "description": "Classic OpenAI usage naming without reasoning tokens.",
+      "reasoning_included_in_output": false,
+      "usage": {
+        "prompt_tokens": 812,
+        "completion_tokens": 96,
+        "total_tokens": 908
+      },
+      "expected": {
+        "input_tokens": 812,
+        "output_tokens": 96,
+        "reasoning_tokens": 0,
+        "total_cost": 177.2
+      }
+    },
+    {
+      "id": "openai_input_output",
+      "description": "Alias naming used by some OpenAI-compatible servers.",
+      "reasoning_included_in_output": false,
+      "usage": {
+        "input_tokens": 640,
+        "output_tokens": 72,
+        "total_tokens": 712
+      },
+      "expected": {
+        "input_tokens": 640,
+        "output_tokens": 72,
+        "reasoning_tokens": 0,
+        "total_cost": 136.0
+      }
+    },
+    {
+      "id": "reasoning_included_in_completion",
+      "description": "Reasoning tokens are already part of completion_tokens; they must not be added again.",
+      "reasoning_included_in_output": true,
+      "usage": {
+        "prompt_tokens": 300,
+        "completion_tokens": 180,
+        "completion_tokens_details": {
+          "reasoning_tokens": 120
+        },
+        "total_tokens": 480
+      },
+      "expected": {
+        "input_tokens": 300,
+        "output_tokens": 180,
+        "reasoning_tokens": 120,
+        "total_cost": 210.0
+      }
+    },
+    {
+      "id": "reasoning_separate_output_details",
+      "description": "Reasoning alongside a nonzero output; whether the proxy already includes it needs smoke-test confirmation, so the current normalizer keeps output_tokens unchanged.",
+      "reasoning_included_in_output": null,
+      "usage": {
+        "input_tokens": 250,
+        "output_tokens": 40,
+        "output_tokens_details": {
+          "reasoning_tokens": 60
+        },
+        "total_tokens": 290
+      },
+      "expected": {
+        "input_tokens": 250,
+        "output_tokens": 40,
+        "reasoning_tokens": 60,
+        "total_cost": 65.0
+      }
+    },
+    {
+      "id": "reasoning_separate_flat_field",
+      "description": "Flat reasoning_tokens field without a details object; a nonzero output is treated as already inclusive until the proxy is characterized.",
+      "reasoning_included_in_output": null,
+      "usage": {
+        "prompt_tokens": 120,
+        "completion_tokens": 24,
+        "reasoning_tokens": 36,
+        "total_tokens": 180
+      },
+      "expected": {
+        "input_tokens": 120,
+        "output_tokens": 24,
+        "reasoning_tokens": 36,
+        "total_cost": 36.0
+      }
+    },
+    {
+      "id": "usage_missing",
+      "description": "Proxy response without a usage object; must be reported as missing, not as zero.",
+      "reasoning_included_in_output": false,
+      "usage": null,
+      "expected": null
+    }
+  ]
+}

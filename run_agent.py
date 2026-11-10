@@ -11,11 +11,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 from pathlib import Path
 from typing import Any
 
+from harness.budget import BudgetConfigurationError, BudgetLedger, BudgetProvider
 from harness.llm import (
     DEFAULT_MODEL,
     ESCALATION_MODEL,
@@ -24,7 +26,13 @@ from harness.llm import (
     build_llm_client,
 )
 from harness.mock_proxy import MockProxyServer
-from harness.runner import RunOptions, run
+from harness.policy import POLICY_NAMES
+from harness.runner import (
+    DEFAULT_TIME_LIMIT,
+    EXTERNAL_TIMEOUT_SECONDS,
+    RunOptions,
+    run,
+)
 
 __all__ = ["build_parser", "main"]
 
@@ -46,11 +54,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--tasks-dir", required=True, help="directory containing <task_id>/task.json")
     parser.add_argument("--out", default=None, help="output directory or solutions.json path (default: $OUT or /tmp/openjiuwen-out)")
-    parser.add_argument("--budget", type=float, default=None, help="total cost budget (default: $BUDGET or 100000)")
+    parser.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        help="total cost budget; priority: --budget > $OJ_TOKEN_BUDGET > $BUDGET (required unless --offline)",
+    )
     parser.add_argument("--reserve", type=float, default=0.0, help="budget reserve kept untouched (default: 0)")
-    parser.add_argument("--per-task-cap", type=float, default=3000.0, help="per-task cost cap (default: 3000)")
+    parser.add_argument(
+        "--policy",
+        choices=POLICY_NAMES,
+        default="value_cost_greedy",
+        help="task selection policy (default: value_cost_greedy)",
+    )
+    parser.add_argument(
+        "--planner-reserve",
+        type=float,
+        default=None,
+        help=(
+            "planning reserve: a fraction of the total budget in [0, 1], or "
+            "absolute cost units when > 1; default: policy heuristic (5%%, "
+            "or 10%% when mostly low-confidence)"
+        ),
+    )
     parser.add_argument("--max-workers", type=int, default=4, help="parallel solver workers, capped at 5 (default: 4)")
-    parser.add_argument("--time-limit", type=float, default=3300.0, help="wall-clock limit in seconds (default: 3300)")
+    parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=DEFAULT_TIME_LIMIT,
+        help=f"wall-clock limit in seconds, below the 1-hour judge timeout (default: {DEFAULT_TIME_LIMIT:g})",
+    )
     parser.add_argument("--triage-threshold", type=float, default=0.6, help="infeasibility threshold in [0,1] (default: 0.6)")
     parser.add_argument("--max-iterations", type=int, default=6, help="max LLM repair iterations for coding (default: 6)")
     parser.add_argument("--mutation-repair", action="store_true", help="enable tiny deterministic mutation repair for coding")
@@ -58,9 +91,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-tokens", type=int, default=None, help="maximum completion tokens per LLM call (default: $LLM_MAX_TOKENS or 1024)")
     parser.add_argument(
         "--llm-backend",
-        choices=("auto", "stdlib", "openjiuwen"),
+        choices=("auto", "stdlib", "openjiuwen", "gateway"),
         default="auto",
-        help="LLM transport backend: auto (default), stdlib urllib, or openjiuwen",
+        help=(
+            "LLM transport backend: auto (default), stdlib urllib, openjiuwen, "
+            "or gateway (the v5 production path through openJiuwen Core; "
+            "never falls back to stdlib)"
+        ),
     )
     parser.add_argument("--model", default=None, help=f"default model (default: $LLM_MODEL or {DEFAULT_MODEL})")
     parser.add_argument("--escalation-model", default=None, help=f"escalation model (default: $LLM_ESCALATION_MODEL or {ESCALATION_MODEL})")
@@ -85,8 +122,17 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--max-workers must be >= 1")
     if args.time_limit < 0:
         parser.error("--time-limit must be >= 0")
+    if args.time_limit > EXTERNAL_TIMEOUT_SECONDS:
+        parser.error(
+            f"--time-limit must not exceed the external 1-hour timeout "
+            f"({EXTERNAL_TIMEOUT_SECONDS:g}s)"
+        )
     if not 0.0 <= args.triage_threshold <= 1.0:
         parser.error("--triage-threshold must be within [0, 1]")
+    if args.planner_reserve is not None and (
+        not math.isfinite(args.planner_reserve) or args.planner_reserve < 0.0
+    ):
+        parser.error("--planner-reserve must be a finite non-negative number")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
@@ -94,7 +140,25 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
     )
 
-    budget = args.budget if args.budget is not None else _env_float("BUDGET", 100_000.0)
+    try:
+        budget_decision = BudgetProvider(
+            args.budget,
+            offline=args.offline,
+        ).resolve()
+    except BudgetConfigurationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    budget = budget_decision.total
+    print(
+        f"budget: {budget:g} (source: {budget_decision.source})",
+        file=sys.stderr,
+    )
+    try:
+        ledger = BudgetLedger(budget, reserve=args.reserve)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
     escalation_model = (
         args.escalation_model
@@ -135,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
                 escalation_model=escalation_model,
                 max_tokens=max_tokens,
             )
-            llm = build_llm_client(config, backend=args.llm_backend)
+            llm = build_llm_client(config, backend=args.llm_backend, ledger=ledger)
             chosen_backend = getattr(llm, "backend_name", args.llm_backend)
             if not getattr(llm, "available", False):
                 print(
@@ -149,8 +213,8 @@ def main(argv: list[str] | None = None) -> int:
             tasks_dir=tasks_dir,
             out=Path(args.out) if args.out else None,
             budget=budget,
+            budget_source=budget_decision.source,
             reserve=args.reserve,
-            per_task_cap=args.per_task_cap,
             max_workers=min(args.max_workers, 5),
             time_limit=args.time_limit,
             triage_threshold=args.triage_threshold,
@@ -164,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
             model=model,
             escalation_model=escalation_model,
             llm=llm,
+            policy=args.policy,
+            planner_reserve=args.planner_reserve,
+            ledger=ledger,
         )
         summary = run(options)
         summary["llm_backend"] = chosen_backend

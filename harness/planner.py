@@ -1,22 +1,73 @@
-"""Cheap heuristic planning.
+"""Cheap heuristic planning and the budget-aware decision API.
 
-The planner never calls an LLM.  It estimates the cost of a task, skips
-infeasible tasks, prioritises reward per estimated cost, and puts fully
-deterministic task types before LLM-dependent ones.
+Two layers live here:
+
+* the legacy, token-free :func:`build_plan` / :func:`estimate_cost` helpers
+  used by the runner for ordering and triage.  They remain unchanged for
+  backward compatibility;
+* the spec v5.0 decision planner from :mod:`harness.policy`, re-exported so
+  callers can use one import site: ``Decision``, ``plan``, ``plan_entries``,
+  ``replan``, the named policies and ``planning_reserve``.
+
+The decision layer converts a :class:`~harness.estimator.CostEstimate` into
+``v_i = reward_i * P_solve_i`` and ``c_i = upper_cost_i``, then respects the
+single global budget plus a separate time limit.  It never calls an LLM.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .policy import (
+    ACTION_REASONS,
+    DEFAULT_CONFIG,
+    DEFAULT_POLICY,
+    POLICIES,
+    POLICY_NAMES,
+    Decision,
+    PlanEntry,
+    PlanSummary,
+    PolicyConfig,
+    accept_all,
+    estimate_time,
+    knapsack_dp,
+    plan,
+    plan_entries,
+    planning_reserve,
+    replan,
+    reward_sort,
+    solve_probability,
+    summarize,
+    value_cost_greedy,
+)
 from .task import Task
 from .triage import DEFAULT_THRESHOLD, TriageResult, triage
 
 __all__ = [
+    "ACTION_REASONS",
+    "DEFAULT_CONFIG",
+    "DEFAULT_POLICY",
     "DETERMINISTIC_TYPES",
+    "POLICIES",
+    "POLICY_NAMES",
+    "Decision",
+    "PlanEntry",
     "PlanItem",
+    "PlanSummary",
+    "PolicyConfig",
+    "accept_all",
     "build_plan",
     "estimate_cost",
+    "estimate_time",
+    "knapsack_dp",
+    "plan",
+    "plan_entries",
+    "planning_reserve",
+    "replan",
+    "reward_sort",
+    "solve_probability",
+    "summarize",
+    "value_cost_greedy",
 ]
 
 DETERMINISTIC_TYPES = frozenset({"math", "search", "data_analysis"})

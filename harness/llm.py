@@ -30,6 +30,7 @@ __all__ = [
     "LLMResponse",
     "LLMUsage",
     "build_llm_client",
+    "build_openjiuwen_gateway",
     "chat_endpoint",
     "model_for_attempt",
 ]
@@ -287,15 +288,48 @@ def _openjiuwen_available() -> bool:
         return False
 
 
-def build_llm_client(config: LLMConfig, backend: str = "auto") -> Any:
+def build_openjiuwen_gateway(*, ledger: Any = None, **kwargs: Any) -> Any:
+    """Build the production gateway (spec section 5.2) without importing the SDK.
+
+    ``openjiuwen`` is imported by the gateway only when the first model is
+    built, so this helper is safe to call in environments without the SDK.
+    """
+
+    from .openjiuwen_gateway import OpenJiuwenGateway
+
+    return OpenJiuwenGateway(ledger=ledger, **kwargs)
+
+
+def build_llm_client(
+    config: LLMConfig,
+    backend: str = "auto",
+    *,
+    ledger: Any = None,
+) -> Any:
     """Build the configured LLM client.
 
-    ``backend`` is one of ``auto``, ``stdlib`` or ``openjiuwen``.  ``auto``
-    selects openJiuwen when the package is importable and otherwise falls back
-    to the stdlib urllib client.  The chosen backend is logged without secrets.
+    ``backend`` is one of ``auto``, ``stdlib``, ``openjiuwen`` or ``gateway``.
+    ``auto`` selects openJiuwen when the package is importable and otherwise
+    falls back to the stdlib urllib client.  ``gateway`` routes calls through
+    :class:`harness.openjiuwen_gateway.OpenJiuwenGateway` and requires
+    ``harness.usage`` for accounting.  The chosen backend is logged without
+    secrets.
     """
 
     choice = (backend or "auto").strip().lower()
+
+    if choice in {"gateway", "openjiuwen-gateway"}:
+        from .openjiuwen_gateway import GatewayChatAdapter
+
+        gateway = build_openjiuwen_gateway(
+            ledger=ledger,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            timeout=config.timeout,
+            temperature=config.temperature,
+        )
+        log.info("LLM backend: openjiuwen gateway")
+        return GatewayChatAdapter(gateway, config)
 
     if choice == "stdlib":
         log.info("LLM backend: stdlib")
@@ -325,7 +359,7 @@ def build_llm_client(config: LLMConfig, backend: str = "auto") -> Any:
         return LLMClient(config)
 
     raise ValueError(
-        f"unknown LLM backend {backend!r}; expected one of auto, stdlib, openjiuwen"
+        f"unknown LLM backend {backend!r}; expected one of auto, stdlib, openjiuwen, gateway"
     )
 
 

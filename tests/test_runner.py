@@ -8,7 +8,6 @@ from pathlib import Path
 from harness.llm import LLMClient, LLMConfig
 from harness.mock_proxy import MockProxyServer
 from harness.runner import RunOptions, run
-
 from tests.support import copy_examples, expected_for
 
 DETERMINISTIC = (
@@ -50,6 +49,13 @@ class RunnerTests(unittest.TestCase):
                 [item["deterministic"] for item in summary["plan"]],
                 [True] * 6 + [False] * 2,
             )
+            self.assertEqual(summary["policy"], "value_cost_greedy")
+            self.assertEqual(summary["planner"]["accepted"], 8)
+            self.assertEqual(summary["planner"]["rejected"], 0)
+            self.assertEqual(summary["estimator"]["total"], 8)
+            self.assertEqual(summary["estimator"]["confidence"]["high"], 6)
+            self.assertEqual(summary["estimator"]["confidence"]["low"], 2)
+            self.assertIn("budget_source", summary)
             self.assertEqual(list(tasks.rglob("answer.txt")), [])
 
     def test_offline_run_solves_six_examples_with_zero_tokens(self) -> None:
@@ -98,6 +104,12 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(per_type["search"]["solved"], 2)
             self.assertEqual(per_type["coding"]["failed"], 2)
             self.assertEqual(summary["budget"]["spent"], 0.0)
+            self.assertEqual(summary["policy"], "value_cost_greedy")
+            self.assertEqual(summary["planner"]["accepted"], 8)
+            self.assertEqual(summary["planner"]["rejected"], 0)
+            self.assertEqual(summary["estimator"]["variant"]["deterministic"], 6)
+            self.assertEqual(summary["budget_source"], "runner-default")
+            self.assertIn("remaining", summary["budget"])
 
             solutions = json.loads((out / "solutions.json").read_text(encoding="utf-8"))
             self.assertEqual(solutions["count"], 8)
@@ -108,6 +120,27 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(statuses[task_id], "solved")
             for task_id in CODING:
                 self.assertEqual(statuses[task_id], "failed")
+
+    def test_offline_mutation_repair_solves_all_examples(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tasks = copy_examples(Path(tmp) / "tasks")
+            summary = run(
+                RunOptions(
+                    tasks_dir=tasks,
+                    out=Path(tmp) / "out",
+                    offline=True,
+                    mutation_repair=True,
+                    max_workers=1,
+                    time_limit=60,
+                )
+            )
+            self.assertEqual(summary["solved"], 8)
+            self.assertEqual(summary["failed"], 0)
+            self.assertEqual(summary["skipped"], 0)
+            self.assertEqual(summary["score"], 20.0)
+            self.assertEqual(summary["tokens_spent"], 0.0)
+            self.assertTrue(list(tasks.rglob("answer.txt")))
+            self.assertEqual(summary["planner"]["accepted"], 8)
 
     def test_mock_llm_run_charges_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

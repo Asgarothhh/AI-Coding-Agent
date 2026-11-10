@@ -1,0 +1,79 @@
+{
+  "estimator_priors_offline": {
+    "description": "CostEstimator with train priors; no online correction",
+    "metrics": {
+      "mae": 2101.3380952380953,
+      "mape_pct": 51.873784558307925,
+      "mdape_pct": 41.73076062245635,
+      "n": 42,
+      "under_upper_pct": 14.285714285714286,
+      "wape_pct": 48.51544909231636
+    }
+  },
+  "global_median": {
+    "description": "one median input/output over all train rows",
+    "metrics": {
+      "mae": 1873.4666666666667,
+      "mape_pct": 44.40502381049193,
+      "mdape_pct": 37.68599743227353,
+      "n": 42,
+      "under_upper_pct": null,
+      "wape_pct": 43.25438010132283
+    }
+  },
+  "online_correction": {
+    "description": "CostEstimator with train priors + in-memory correction after each observed row",
+    "metrics": {
+      "mae": 2190.705349408816,
+      "mape_pct": 52.295850163323074,
+      "mdape_pct": 47.319099979781264,
+      "n": 42,
+      "under_upper_pct": 16.666666666666668,
+      "wape_pct": 50.57874984342581
+    }
+  },
+  "per_model": {
+    "description": "median input/output by model label, global fallback",
+    "metrics": {
+      "mae": 1873.4666666666667,
+      "mape_pct": 44.40502381049193,
+      "mdape_pct": 37.68599743227353,
+      "n": 42,
+      "under_upper_pct": null,
+      "wape_pct": 43.25438010132283
+    }
+  },
+  "per_solver_type": {
+    "description": "median input/output by (solver, task_type), global fallback",
+    "metrics": {
+      "mae": 1836.045238095238,
+      "mape_pct": 43.09891623580481,
+      "mdape_pct": 37.8102309124762,
+      "n": 42,
+      "under_upper_pct": null,
+      "wape_pct": 42.39039851885731
+    }
+  },
+  "per_type": {
+    "description": "median input/output by task_type, global fallback",
+    "metrics": {
+      "mae": 1836.045238095238,
+      "mape_pct": 43.09891623580481,
+      "mdape_pct": 37.8102309124762,
+      "n": 42,
+      "under_upper_pct": null,
+      "wape_pct": 42.39039851885731
+    }
+  },
+  "prompt_heuristic": {
+    "description": "estimator heuristic path: prompt chars / chars_per_token x steps; no priors",
+    "metrics": {
+      "mae": 3540.5006739926735,
+      "mape_pct": 77.84611032690007,
+      "mdape_pct": 81.45252004742257,
+      "n": 42,
+      "under_upper_pct": 78.57142857142857,
+      "wape_pct": 81.74266701757993
+    }
+  }
+}

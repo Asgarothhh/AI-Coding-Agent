@@ -1,0 +1,12 @@
+{
+  "status": "blocked",
+  "reason": "no LLM_BASE_URL/LLM_API_KEY",
+  "generated_at": "2026-11-10T18:44:16.522622+00:00",
+  "models": [
+    "qwen3.8-27b",
+    "qwen3.8-27b-noreason",
+    "qwen3.6-35b-a3b",
+    "qwen3.6-35b-a3b-noreason"
+  ],
+  "results": []
+}

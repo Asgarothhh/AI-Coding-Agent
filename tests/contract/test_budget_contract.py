@@ -1,11 +1,12 @@
-"""Contract: cost accounting, hard stops and reserve/per-task caps.
+"""Contract: cost accounting, hard stops and the global budget ledger.
 
 The single shared budget must always follow::
 
     cost = prompt_tokens / 10 + completion_tokens
 
 and it must stop *new* work without ever crashing a response that was already
-paid for.
+paid for.  There is no per-task cap: reserve/settle decisions are always
+relative to the one global budget.
 """
 
 from __future__ import annotations
@@ -13,13 +14,21 @@ from __future__ import annotations
 import tempfile
 import threading
 import unittest
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
-from harness.budget import Budget, BudgetExhausted, cost_of
+from harness.budget import (
+    Budget,
+    BudgetError,
+    BudgetExhausted,
+    BudgetLedger,
+    cost_of,
+)
+from harness.estimator import CostEstimate
 from harness.llm import ChatMessage, LLMConfig, LLMResponse, LLMUsage
 from harness.runner import RunOptions, run
-
+from harness.usage import TokenUsage, normalize_usage
 from tests.support import make_task
 
 BROKEN_LIB = "def add(a, b):\n    return a - b\n"
@@ -36,6 +45,28 @@ FAILING_TEST = (
 
 CODING_FILES = {"mylib.py": BROKEN_LIB, "test_mylib.py": FAILING_TEST}
 CODING_INSTRUCTION = "Fix mylib.py so that test_mylib.py passes."
+
+
+class LowCostEstimator:
+    """Estimator stub that keeps these ledger contracts about *actual* usage.
+
+    The production estimator deliberately reserves a risk-oriented upper cost;
+    with a 200-unit test budget a real coding estimate would be rejected before
+    the first call.  These tests exercise the ledger after the call, so they
+    inject a forecast that fits and let the actual response overspend.
+    """
+
+    def estimate(self, task: Any, solver: str, model: str) -> CostEstimate:
+        return CostEstimate(
+            expected_cost=50.0,
+            upper_cost=60.0,
+            expected_input_tokens=0.0,
+            expected_output_tokens=50.0,
+            confidence="high",
+            model=model,
+            solver=solver,
+            drivers=("scope=test",),
+        )
 
 
 class CountingLLM:
@@ -84,13 +115,13 @@ def _coding_task(root: Path, task_id: str):
 
 
 def _run(root: Path, out: Path, **overrides: Any) -> dict[str, Any]:
-    options = dict(
-        tasks_dir=root,
-        out=out,
-        offline=True,
-        max_workers=1,
-        time_limit=60.0,
-    )
+    options: dict[str, Any] = {
+        "tasks_dir": root,
+        "out": out,
+        "offline": True,
+        "max_workers": 1,
+        "time_limit": 60.0,
+    }
     options.update(overrides)
     return run(RunOptions(**options))
 
@@ -117,7 +148,8 @@ class CostFormulaTests(unittest.TestCase):
         self.assertEqual(budget.spent, 15.0)
         self.assertEqual(budget.prompt_tokens, 50)
         self.assertEqual(budget.completion_tokens, 10)
-        self.assertEqual(budget.task_spent("t"), 15.0)
+        self.assertEqual(budget.remaining, 985.0)
+        self.assertEqual(budget.reserved, 0.0)
 
 
 class BudgetZeroTests(unittest.TestCase):
@@ -185,41 +217,57 @@ class ReserveTests(unittest.TestCase):
             self.assertEqual(list(root.rglob("answer.txt")), [])
 
 
-class PerTaskCapTests(unittest.TestCase):
-    def test_cap_blocks_one_task_but_not_another(self) -> None:
-        budget = Budget(100_000.0, per_task_cap=100.0)
-        budget.charge(0, 100, "a")
+class LedgerContractTests(unittest.TestCase):
+    def test_reserve_rejects_when_estimate_does_not_fit(self) -> None:
+        ledger = BudgetLedger(100.0)
+        ledger.reserve("first", 0, 90)
         with self.assertRaises(BudgetExhausted) as caught:
-            budget.check("a", estimated_cost=1.0)
-        self.assertIn("per-task cap", str(caught.exception))
-        # A different task has a clean per-task ledger.
-        budget.check("b", estimated_cost=100.0)
+            ledger.reserve("second", 0, 11)
+        self.assertIn("insufficient budget", str(caught.exception))
+        self.assertEqual(ledger.reserved, 90.0)
+        self.assertLessEqual(ledger.spent + ledger.reserved, ledger.total)
 
-    def test_solver_stops_before_llm_call_when_cap_would_be_exceeded(self) -> None:
+    def test_settle_above_estimate_then_next_reserve_sees_real_remaining(self) -> None:
+        ledger = BudgetLedger(100.0)
+        reservation = ledger.reserve("req", 0, 10)
+        charged = ledger.settle(
+            reservation,
+            normalize_usage({"prompt_tokens": 0, "completion_tokens": 95}),
+        )
+        self.assertEqual(charged, 95.0)
+        self.assertEqual(ledger.spent, 95.0)
+        self.assertEqual(ledger.reserved, 0.0)
+        with self.assertRaises(BudgetExhausted):
+            ledger.reserve("too-big", 0, 6)
+        self.assertEqual(ledger.spent + ledger.reserved, 95.0)
+
+    def test_release_restores_capacity_and_double_handles_raise(self) -> None:
+        ledger = BudgetLedger(100.0)
+        reservation = ledger.reserve("req", 0, 40)
+        self.assertEqual(ledger.remaining, 60.0)
+        ledger.release(reservation)
+        self.assertEqual(ledger.remaining, 100.0)
+        with self.assertRaises(BudgetError):
+            ledger.release(reservation)
+        usage = TokenUsage(input_tokens=1, output_tokens=1, total_cost=1.1)
+        settled = ledger.reserve("settled", 0, 5)
+        ledger.settle(settled, usage)
+        with self.assertRaises(BudgetError):
+            ledger.settle(settled, usage)
+
+    def test_runner_summary_exposes_budget_source_and_ledger_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "tasks"
-            _coding_task(root, "coding_a")
-            fake = CountingLLM()
+            make_task(root, "math_a", instruction="Compute 1 + 1.")
 
-            summary = _run(
-                root,
-                Path(tmp) / "out",
-                offline=False,
-                llm=fake,
-                budget=1_000.0,
-                per_task_cap=1.0,
-                max_iterations=2,
-                max_tokens=64,
-            )
+            summary = _run(root, Path(tmp) / "out", budget=100.0, dry_run=True)
 
-            self.assertEqual(summary["solved"], 0)
-            self.assertEqual(summary["skipped"], 1)
-            self.assertEqual(summary["failed"], 0)
-            self.assertEqual(fake.calls, 0)
-            self.assertEqual(summary["tokens_spent"], 0.0)
-            result = summary["results"][0]
-            self.assertTrue(result["notes"].startswith("budget stop:"))
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            self.assertEqual(summary["budget_source"], "runner-default")
+            budget = summary["budget"]
+            for key in ("total", "spent", "reserved", "remaining"):
+                self.assertIn(key, budget)
+            self.assertNotIn("per_task_cap", budget)
+            self.assertEqual(budget["reserved"], 0.0)
 
 
 class GlobalExhaustionTests(unittest.TestCase):
@@ -237,26 +285,31 @@ class GlobalExhaustionTests(unittest.TestCase):
             root = Path(tmp) / "tasks"
             for task_id in ("coding_a", "coding_b", "coding_c"):
                 _coding_task(root, task_id)
-            # One response already costs more than the whole budget.
-            fake = CountingLLM(text="MOCK", prompt_tokens=0, completion_tokens=100)
+            # The estimate fits, but the actual response overspends the global
+            # budget and stops every task that has not started yet.
+            fake = CountingLLM(
+                text="MOCK", prompt_tokens=0, completion_tokens=250
+            )
 
             summary = _run(
                 root,
                 Path(tmp) / "out",
                 offline=False,
                 llm=fake,
-                budget=50.0,
-                per_task_cap=10_000.0,
+                budget=200.0,
                 max_iterations=1,
+                max_tokens=8,
                 max_workers=1,
+                estimator=LowCostEstimator(),
             )
 
             self.assertEqual(summary["solved"], 0)
             self.assertEqual(summary["failed"], 1)
             self.assertEqual(summary["skipped"], 2)
             self.assertEqual(summary["stop_reason"], "budget")
-            self.assertEqual(summary["tokens_spent"], 100.0)
+            self.assertEqual(summary["tokens_spent"], 250.0)
             self.assertEqual(fake.calls, 1)
+            self.assertEqual(summary["budget"]["spent"], 250.0)
             self.assertEqual(list(root.rglob("answer.txt")), [])
 
 
@@ -276,6 +329,7 @@ class FakeLLMUsageTests(unittest.TestCase):
                 max_iterations=2,
                 max_tokens=64,
                 max_workers=1,
+                estimator=LowCostEstimator(),
             )
 
             # Two unusable patches, each response costs 50/10 + 10 = 15.

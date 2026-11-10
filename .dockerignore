@@ -1,19 +1,29 @@
-.git
-.gitignore
-__pycache__
-**/__pycache__
-*.py[cod]
-.venv
-venv
-.pytest_cache
-.mypy_cache
-.ruff_cache
-examples
-tests
-scripts
-answer.txt
-solutions.json
-trace.jsonl
-.env
-.env.*
-*.md
+# Deny-by-default build context.
+#
+# The image contains the harness runtime only: its entry point, the package it
+# imports and the hashed dependency lock. Everything else (git history, specs,
+# tests, examples, datasets, eval reports, local logs, keys, editor swap files,
+# archives) is excluded, so it cannot leak into a layer by accident.
+*
+!run_agent.py
+!entrypoint.sh
+!requirements.lock
+!harness
+!harness/**
+
+# Explicit exclusions inside the whitelisted tree (last match wins).
+harness/__pycache__
+harness/**/__pycache__
+**/*.py[cod]
+**/*.so.dbg
+**/answer.txt
+**/solutions.json
+**/trace.jsonl
+**/*.log
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/id_rsa*
+**/*.swp
+**/*.swo

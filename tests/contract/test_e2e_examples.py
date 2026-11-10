@@ -50,6 +50,7 @@ def _run_cli(*args: str) -> dict:
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     if proc.returncode != 0:
         raise AssertionError(
@@ -97,6 +98,14 @@ class ExamplesEndToEndTests(unittest.TestCase):
             self.assertEqual(summary["prompt_tokens"], 0)
             self.assertEqual(summary["completion_tokens"], 0)
             self.assertIsNone(summary["stop_reason"])
+            self.assertEqual(summary["policy"], "value_cost_greedy")
+            self.assertEqual(summary["planner"]["accepted"], 8)
+            self.assertEqual(summary["planner"]["rejected"], 0)
+            self.assertEqual(summary["planner"]["reasons"], {"accept": 8})
+            self.assertEqual(summary["estimator"]["total"], 8)
+            self.assertEqual(summary["estimator"]["confidence"]["high"], 6)
+            self.assertIn("budget_source", summary)
+            self.assertEqual(summary["budget"]["spent"], 0.0)
 
             for task_id, expected in DETERMINISTIC_ANSWERS.items():
                 with self.subTest(task=task_id):
@@ -173,6 +182,11 @@ class ExamplesEndToEndTests(unittest.TestCase):
                 [item["deterministic"] for item in summary["plan"]],
                 [True] * 6 + [False] * 2,
             )
+            self.assertEqual(summary["policy"], "value_cost_greedy")
+            self.assertEqual(summary["planner"]["accepted"], 8)
+            self.assertEqual(summary["planner"]["rejected"], 0)
+            self.assertEqual(summary["estimator"]["total"], 8)
+            self.assertIn("budget", summary)
             self.assertEqual(list(tasks.rglob("answer.txt")), [])
             self.assertFalse((out / "solutions.json").exists())
 

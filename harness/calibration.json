@@ -1,0 +1,132 @@
+{
+  "applicability": "weak external prior: lorne models are not the four competition aliases, so all priors are weak_transfer and capped at low confidence",
+  "generated_by": "eval/import_lorne.py",
+  "heuristic": {
+    "chars_per_token": {
+      "code": 3.0,
+      "json": 2.4,
+      "text": 2.6
+    },
+    "chars_per_token_measured": false,
+    "completion_tokens": {
+      "coding": 117.429,
+      "data_analysis": 96,
+      "default": 400,
+      "generic": 400,
+      "math": 24,
+      "search": 160
+    },
+    "prompt_overhead_chars": {
+      "coding": 768,
+      "data_analysis": 256,
+      "default": 512,
+      "generic": 768,
+      "math": 256,
+      "search": 256
+    },
+    "prompt_overhead_measured": false,
+    "steps": {
+      "coding": 6.0,
+      "data_analysis": 1,
+      "default": 1,
+      "generic": 1,
+      "math": 1,
+      "search": 1
+    },
+    "upper_multiplier": {
+      "high": 1.4,
+      "low": 2.5,
+      "medium": 1.8
+    }
+  },
+  "priors": [
+    {
+      "confidence": "low",
+      "cost": 3844.9,
+      "input_tokens": 30990.0,
+      "model": "*",
+      "model_alias": null,
+      "n": 78,
+      "output_tokens": 597.5,
+      "p90_cost": 12997.9,
+      "sample_confidence": "high",
+      "solver": "*",
+      "source": "lorne",
+      "split": "train",
+      "steps": 6.0,
+      "task_type": "*",
+      "weak_transfer": true
+    },
+    {
+      "confidence": "low",
+      "cost": 3918.1,
+      "input_tokens": 30990.0,
+      "model": "*",
+      "model_alias": null,
+      "n": 72,
+      "output_tokens": 646.0,
+      "p90_cost": 12997.9,
+      "sample_confidence": "high",
+      "solver": "coding",
+      "source": "lorne",
+      "split": "train",
+      "steps": 6.0,
+      "task_type": "*",
+      "weak_transfer": true
+    },
+    {
+      "confidence": "low",
+      "cost": 3918.1,
+      "input_tokens": 30990.0,
+      "model": "external:lmstudio/ornith-1.5-9b",
+      "model_alias": null,
+      "n": 72,
+      "output_tokens": 646.0,
+      "p90_cost": 12997.9,
+      "sample_confidence": "high",
+      "solver": "coding",
+      "source": "lorne",
+      "split": "train",
+      "steps": 6.0,
+      "task_type": "*",
+      "weak_transfer": true
+    },
+    {
+      "confidence": "low",
+      "cost": 3918.1,
+      "input_tokens": 30990.0,
+      "model": "*",
+      "model_alias": null,
+      "n": 72,
+      "output_tokens": 646.0,
+      "p90_cost": 12997.9,
+      "sample_confidence": "high",
+      "solver": "coding",
+      "source": "lorne",
+      "split": "train",
+      "steps": 6.0,
+      "task_type": "coding",
+      "weak_transfer": true
+    },
+    {
+      "confidence": "low",
+      "cost": 3918.1,
+      "input_tokens": 30990.0,
+      "model": "external:lmstudio/ornith-1.5-9b",
+      "model_alias": null,
+      "n": 72,
+      "output_tokens": 646.0,
+      "p90_cost": 12997.9,
+      "sample_confidence": "high",
+      "solver": "coding",
+      "source": "lorne",
+      "split": "train",
+      "steps": 6.0,
+      "task_type": "coding",
+      "weak_transfer": true
+    }
+  ],
+  "source": "lorne bench results (TCA/bench/results/*.jsonl)",
+  "split": "task-id split: sha256('lorne-v1:<task_id>') % 4 == 2 -> test; rows of one task never cross the split",
+  "version": 1
+}

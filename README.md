@@ -2,8 +2,9 @@
 
 A Python 3.11 harness with a stdlib-only core and an optional openJiuwen
 model layer. The final image installs `openjiuwen==0.1.20.post1`
-(`requirements-openjiuwen.txt`); `--llm-backend auto` uses it when present and
-falls back to the stdlib urllib client otherwise.
+(`requirements-openjiuwen.txt`). v5 sends production LLM calls through
+`OpenJiuwenGateway` (`--llm-backend gateway`); `auto` remains compatible and
+uses openJiuwen when present, otherwise the stdlib urllib client.
 
 ```bash
 python /app/run_agent.py --tasks-dir /data/tasks
@@ -34,13 +35,20 @@ are still solved with **zero tokens**.
 
 ```
 run_agent.py                     CLI entry point
+entrypoint.sh                    exec "$@", normalises HOME, no side effects
 harness/
   task.py                        Task dataclass, BOM-safe load_tasks()
-  budget.py                      thread-safe cost accounting + hard stop
+  usage.py                       normalised token usage records
+  budget.py                      BudgetProvider + atomic reserve/settle/release ledger
+  features.py                    task features for the cost estimator
+  estimator.py                   calibrated per-type median cost estimator
+  calibration.json               frozen calibration data
+  policy.py                      selection policies + planning reserve
+  planner.py                     deterministic-first plan over policy decisions
   llm.py                         stdlib urllib client + backend factory
   ojiuwen_llm.py                 openJiuwen Model adapter (async -> sync)
+  openjiuwen_gateway.py          v5 production gateway on the openJiuwen Core SDK
   triage.py                      zero-LLM infeasibility scoring
-  planner.py                     heuristic cost estimate + deterministic-first plan
   solvers/
     base.py                      SolveResult / SolverContext
     math.py                      chain parser + safe arithmetic evaluator
@@ -55,10 +63,11 @@ harness/
 Dockerfile                       python:3.11-slim image with openjiuwen pinned
 scripts/build.sh                 build hack:latest + openjiuwen-hack:latest
 scripts/run_local.sh             offline hardened smoke run
+scripts/sdk_smoke.py             live gateway smoke check (blocked without credentials)
 requirements.txt                 runtime SDK pin (openjiuwen==0.1.20.post1)
 requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
-tests/                           stdlib unittest suite
-tests/contract/                  29 contract tests (paths, budget, planner, parallel, time limit, E2E)
+tests/                           stdlib unittest suite (250 tests, 2 skipped)
+tests/contract/                  32 contract tests (paths, budget, estimator, policy, parallel, time limit, E2E)
 examples/task-dir/               eight official examples
 examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 ```
@@ -79,21 +88,30 @@ examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 
 ### Budget
 
-One budget covers all sessions. The proxy does not report remaining budget,
-so every response is charged locally:
+There is exactly **one global budget** and **no per-task cap**.
+
+`BudgetProvider` resolves the total once at startup with the priority
+`--budget` > `OJ_TOKEN_BUDGET` > `BUDGET`. Without a value and without
+`--offline`, the CLI exits with a configuration error before any LLM call.
+With `--offline` only, `100000` is a **local test assumption**
+(`budget_source=offline-default`) and a warning is printed.
+
+Every LLM call reserves its worst case, then settles against actual usage:
 
 ```
 cost = prompt_tokens / 10 + completion_tokens
 ```
 
-Reasoning tokens are reported as completion tokens and therefore count as
-output. Cache accounting is ignored. Before a call the coding solver checks
-that `remaining > reserve` and that the per-task cap would not be exceeded;
-after the response it charges the actual usage. Overspending stops new tasks
-but never crashes a paid-for response. The budget is guarded by an
-`RLock`, so the parallel sessions share it safely.
+Reasoning tokens are completion tokens and are not counted twice; cache
+accounting is ignored. `BudgetLedger` implements atomic `reserve`, `settle`
+and `release` under one lock and maintains `spent + reserved <= total` for
+every issued reservation. A paid response may settle above its estimate; the
+excess is charged and never hidden, and later reservations see the reduced
+budget. Overspending stops new tasks but never crashes an already paid
+response. Parallel sessions share the single ledger safely.
 
-Defaults: total `$BUDGET` or `100000`, per-task cap `3000`, reserve `0`.
+The summary exposes `budget_source` and a `budget` block: `total`, `spent`,
+`reserved`, `remaining`, `prompt_tokens`, `completion_tokens`, `stopped`.
 
 ### Triage
 
@@ -113,14 +131,38 @@ skipped and recorded with reasons.
 
 ### Planning
 
-`harness/planner.py` estimates cost from task type, instruction length, and
-file count. `priority = reward / estimated_cost`. The plan orders:
+`harness/estimator.py` estimates cost from `harness/features.py` plus the
+frozen `harness/calibration.json`. Fallback medians are tried in order:
+`(solver, type, model)` -> `(solver, type)` -> global -> prompt heuristic.
+Confidence is `high` at >=20 samples, `medium` at 8–19, `low` below 8.
+Deterministic tasks cost zero. An in-memory online correction exists but is
+**off by default** because it made held-out estimates worse.
 
-1. planned deterministic tasks (`math`, `search`, `data_analysis`);
-2. planned LLM-dependent tasks (`coding`);
-3. infeasible/skipped tasks.
+Held-out lorne set (42 rows, split by `task_id`):
 
-The planner has no LLM dependency and performs no network calls.
+| Theory | MAE | MAPE |
+|---|---:|---:|
+| per-type median (chosen) | 1836 | 43.1% |
+| global / per-model | 1873 | 44.4% |
+| prompt heuristic | 3540 | 77.8% |
+| online correction | 2191 | 52.3% |
+
+The per-type median also has WAPE 42.4%. It wins, so it is the default.
+
+`harness/policy.py` selects tasks under the global budget. The default is
+`value_cost_greedy`: value is `reward * P_solve`, cost is `upper_cost`, and it
+plans against `remaining` minus a planning reserve of 5% (10% when
+low-confidence tasks dominate). `--planner-reserve` overrides the reserve.
+Available policies: `accept_all`, `reward_sort`, `value_cost_greedy`,
+`knapsack_dp`. Planning makes no LLM or network calls.
+
+Simulation at 20k / 50k / 100k budgets:
+
+| Policy | Total reward | Overspend | Note |
+|---|---:|---:|---|
+| `value_cost_greedy` | 250.0 across the three scenarios | 0 | chosen default |
+| `knapsack_dp` | 250.0 | 0 | identical selected set |
+| `reward_sort` | lower expected value | 0 | — |
 
 ### Deterministic solvers
 
@@ -154,9 +196,25 @@ the snapshot before the solver gives up.
 
 ### LLM backends
 
-Two interchangeable clients implement the same
+The `gateway` backend is the v5 production path. `stdlib` and `openjiuwen`
+remain compatible transports; all three implement the same
 `chat(messages, *, model, max_tokens, temperature, attempt) -> LLMResponse`
 contract.
+
+**gateway** (`harness/openjiuwen_gateway.py`, `OpenJiuwenGateway`)
+
+* v5 production path: every production LLM call goes through
+  `OpenJiuwenGateway`, built on the `openjiuwen` Core SDK.
+* Only four models are allowed: `qwen3.8-27b`, `qwen3.8-27b-noreason`,
+  `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`.
+* No silent fallback. An unavailable model, gateway error, or SDK import
+  failure raises `LLMError`; the gateway never switches model or endpoint on
+  its own.
+* Selected with `--llm-backend gateway`. `auto` remains compatible and keeps
+  the existing resolution order.
+* Live smoke is **BLOCKED** on this machine: `scripts/sdk_smoke.py` cannot run
+  because `LLM_BASE_URL` / `LLM_API_KEY` are unset and the SDK is not
+  installed. No successful live v5 run is claimed.
 
 **stdlib** (`harness/llm.py`, `LLMClient`)
 
@@ -212,11 +270,12 @@ shutdown diagnostics go to stderr.
 
 `build_llm_client(config, backend="auto")` selects the transport:
 
+* `gateway` — `OpenJiuwenGateway` through `GatewayChatAdapter`; no fallback;
 * `stdlib` — always `LLMClient`;
 * `openjiuwen` — `OpenJiuwenLLMClient`, or `LLMError` when the package is not
   installed;
 * `auto` — openJiuwen when `importlib.util.find_spec("openjiuwen")` succeeds,
-  otherwise stdlib.
+  otherwise stdlib (backward-compatible, not the v5 production path).
 
 The chosen backend is printed on stderr and echoed in the final JSON summary as
 `llm_backend`.
@@ -227,7 +286,7 @@ Example openJiuwen configuration:
 export LLM_BASE_URL="http://proxy/v1"
 export LLM_API_KEY="..."
 export OJ_EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
-python run_agent.py --tasks-dir /data/tasks --llm-backend auto
+python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 ```
 
 ### Runner
@@ -239,17 +298,24 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend auto
   skipped, without answers.
 * Writes `trace.jsonl` and `solutions.json` incrementally with `fsync`.
 * Final JSON summary on stdout includes solved/skipped/failed/errors, score,
-  tokens spent, prompt/completion totals, budget snapshot, stop reason, and
-  per-type stats.
+  tokens spent, prompt/completion totals, stop reason, per-type stats,
+  `budget_source`, `budget`, `policy`, `planner` and `estimator`.
+  `planner` covers accepted/rejected/reasons/reserve/planned_cost/
+  expected_reward/coverage; `estimator` covers model/total/variant/confidence;
+  `budget` covers total/spent/reserved/remaining/prompt_tokens/
+  completion_tokens/stopped.
 
 ## CLI
 
 ```
 --tasks-dir PATH          required
 --out PATH                directory or solutions.json path ($OUT / /tmp/openjiuwen-out)
---budget FLOAT            total budget ($BUDGET / 100000)
+--budget FLOAT            total budget; --budget > $OJ_TOKEN_BUDGET > $BUDGET (required unless --offline)
 --reserve FLOAT           keep untouched (default 0)
---per-task-cap FLOAT      per-task cap (default 3000)
+--policy CHOICE           accept_all | reward_sort | value_cost_greedy | knapsack_dp
+                          (default value_cost_greedy)
+--planner-reserve FLOAT   fraction of total, or absolute above 1
+                          (default 5%, 10% when low-confidence dominates)
 --max-workers INT         parallel sessions, capped at 5 (default 4)
 --time-limit FLOAT        wall clock seconds (default 3300)
 --triage-threshold FLOAT  default 0.6
@@ -257,7 +323,8 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend auto
 --mutation-repair         enable deterministic coding mutation search
 --test-timeout FLOAT      per test file (default 60)
 --max-tokens INT          completion cap per LLM call (default 1024)
---llm-backend CHOICE      auto | stdlib | openjiuwen (default auto)
+--llm-backend CHOICE      auto | stdlib | openjiuwen | gateway
+                          (default auto; gateway is the v5 production path)
 --model STR               default model
 --escalation-model STR    escalation model
 --dry-run                 plan + JSON summary, no solving
@@ -289,10 +356,15 @@ bash scripts/run_local.sh   # hardened offline smoke run
 The image is `python:3.11-slim-bookworm` with `openjiuwen==0.1.20.post1`.
 Measured size: **1.39 GB**; cold build: **~183 s**; well below the 4 GB limit.
 
-`scripts/run_local.sh` uses the same hardening flags as the final contract with
-`--network none` and `--user "$(id -u):$(id -g)"` so it can write to the
-user-owned example directory. Offline smoke result: 8 tasks, 6 solved, 2 coding
-failed gracefully, **0 tokens**.
+`scripts/run_local.sh` uses the same hardening flags as the final contract
+(4 CPUs, 16 GB, read-only root, `/tmp` tmpfs 2 GB, `--cap-drop ALL`,
+`no-new-privileges`), with `--network none` and `--user "$(id -u):$(id -g)"` so
+it can write to the user-owned example directory. With `--mutation-repair` the
+offline smoke solves 8/8 for score 20 with **0 tokens**.
+
+The image uses `entrypoint.sh` as its `ENTRYPOINT`: it normalises `HOME` and
+`exec "$@"`, so signals and the exit code reach the judge. The command after
+the image is therefore the Python invocation itself.
 
 The final run command shape (the network name is organizer-specific):
 
@@ -303,18 +375,21 @@ docker run --rm \
   --read-only \
   --tmpfs /tmp:rw,size=2g \
   -e HOME=/tmp \
-  -e BUDGET=100000 \
+  --cpus 4 \
+  --memory 16g \
+  -e BUDGET="$BUDGET" \
   -e LLM_BASE_URL="$LLM_BASE_URL" \
   -e LLM_API_KEY="$LLM_API_KEY" \
   --cap-drop ALL \
   --security-opt no-new-privileges \
   -v "$TASKS:/data/tasks:rw" \
-  --entrypoint python \
-  hack:latest /app/run_agent.py --tasks-dir /data/tasks
+  hack:latest python /app/run_agent.py --tasks-dir /data/tasks
 ```
 
 * `--network hack-net` is organizer-specific; add it only if the event
   environment requires that network.
+* A budget must be supplied (`BUDGET` or `OJ_TOKEN_BUDGET`); the harness does
+  not invent one outside `--offline`.
 * No `/app/logs` tmpfs is required: openJiuwen logs go to
   `/tmp/openjiuwen-logs` at WARNING.
 * stdout is one JSON object; the `LLM backend:` line and any diagnostics go to
@@ -329,8 +404,10 @@ docker run --rm \
 
 ### Model layer
 
-`--llm-backend auto` (default) uses `harness/ojiuwen_llm.py` when openJiuwen
-is installed. The final image installs:
+`--llm-backend gateway` is the v5 production path and uses
+`harness/openjiuwen_gateway.py` on the openJiuwen Core SDK. `--llm-backend
+auto` (default) remains backward compatible: it uses `harness/ojiuwen_llm.py`
+when openJiuwen is installed, otherwise stdlib. The final image installs:
 
 ```text
 openjiuwen==0.1.20.post1
@@ -368,9 +445,10 @@ implement `DeepAgentRuntime.solve()` and route selected task types through the
 same `harness.store` and `harness.budget` abstractions.
 
 API note: the DeepAgent path follows the signatures verified in the
-0.1.20.post1 wheel. It is import-guarded and has not been exercised end to end;
-the model layer and its logging were verified in the container against the live
-proxy, but `DeepAgentRuntime.solve()` is still not wired into the default runner.
+0.1.20.post1 wheel. It is import-guarded and has not been exercised end to end.
+Live model-layer verification is v4 historical (see Verification); v5 gateway
+smoke is blocked. `DeepAgentRuntime.solve()` is still not wired into the default
+runner.
 
 ## Extended task set
 
@@ -407,8 +485,8 @@ infeasible; after the fix all 16 extended tasks are planned and attempted.
 
 ## Tests
 
-The full suite is **117 stdlib unittest tests**, of which **2 are skipped** on
-the host because they require a real `openjiuwen` import. **29 contract tests**
+The full suite is **250 stdlib unittest tests**, of which **2 are skipped** on
+the host because they require a real `openjiuwen` import. **32 contract tests**
 live under `tests/contract/`.
 
 ```bash
@@ -419,14 +497,16 @@ live under `tests/contract/`.
 Contract coverage includes:
 
 * task path/loading and answer-path handling;
-* budget formula, per-task cap, global exhaustion, zero budget;
-* planner ordering with 100 tasks / 20 infeasible;
+* budget formula, no per-task cap, global budget only, exhaustion, zero budget;
+* estimator fallback order, confidence bands, calibration and zero-cost tasks;
+* policy selection, planning reserve and deterministic-first ordering;
 * parallel workers and thread safety;
 * `time_limit == 0` (no task attempted) and positive deadlines;
 * end-to-end example runs.
 
-The host unit tests for the openJiuwen client use injected fake models; the
-real SDK path is exercised in the container (see Verification).
+The host unit tests for the openJiuwen clients use injected fake models and
+import guards. The v5 live gateway smoke is blocked here (see Verification);
+no successful live v5 run is claimed.
 
 ## Verification
 
@@ -438,17 +518,31 @@ Local commands:
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --dry-run --offline
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --llm-backend stdlib --max-workers 1
 ~/.local/bin/python3.11 run_agent.py --tasks-dir examples/task-dir --offline --mutation-repair --max-workers 1
+~/.local/bin/python3.11 -m unittest discover -s tests/contract -v
+# scripts/sdk_smoke.py  # BLOCKED here: no LLM_BASE_URL/LLM_API_KEY, SDK absent
 ```
 
-Verified results:
+Verified v5 results:
 
 | Run | Result | Tokens spent | Notes |
 |---|---|---|---|
 | Offline examples | 8 tasks, 0 infeasible, 6 solved, 2 coding failed gracefully | 0 | score 16 |
 | Offline + `--mutation-repair` | 8/8 solved | 0 | score 20 |
+| Extended offline set | 16 tasks, 12 solved, 4 failed gracefully | 0 | score 39 |
+
+The v4 live-run table below is **historical**. Those runs used the v4
+stdlib/openjiuwen path, not the v5 gateway, and were **not re-verified in v5**.
+It is kept for reference only.
+
+| v4 historical run | Result | Tokens spent | Notes |
+|---|---|---|---|
 | Live NeuralDeep via stdlib client | 8/8 solved | 1100.5 (prompt 2175, completion 883) | score 20, ~6 s |
 | Live container, explicit `--llm-backend openjiuwen --max-workers 1` | 8/8 solved | 454.3 (prompt 1433, completion 311) | score 20, ~5.3 s; stdout single JSON; stderr only `LLM backend: openjiuwen` |
 | Live container, exact official invocation (`--tasks-dir` only; default auto, max-workers=4) | 8/8 solved | 1162.7 (prompt 2857, completion 877) | score 20, 16.9 s; `llm_backend=openjiuwen`, requested `auto`; 4 proxy calls; `coding_0003` needed 3 repair iterations; concurrency safe, no event-loop error |
+
+v5 live smoke is blocked on this machine: `scripts/sdk_smoke.py` needs
+`LLM_BASE_URL`, `LLM_API_KEY` and the installed SDK. No successful v5 live run
+is claimed.
 
 The exact official invocation is just:
 
@@ -468,10 +562,10 @@ with `BUDGET`, `LLM_BASE_URL` and `LLM_API_KEY` supplied by the environment.
 * `solutions.json` is rewritten on every task. This is deliberate for
   durability; with 100 tasks the file remains small.
 * The mock proxy is for tests only and makes no network calls.
-* The live openJiuwen SDK is verified in the container against NeuralDeep,
-  including concurrent calls and the exact auto / 4-worker invocation. Host
-  unit tests still use injected fakes and import guards because the SDK is not
-  installed on the host.
+* The v4 live openJiuwen/NeuralDeep runs in the historical table are kept for
+  reference and were not re-verified in v5. Host unit tests use injected fakes
+  and import guards; v5 gateway smoke is blocked because the SDK and
+  credentials are absent here.
 * The DeepAgent path is implemented but deliberately not wired into the
   default runner; `DeepAgentRuntime.solve()` raises `NotImplementedError`.
 * The openJiuwen logging configuration uses the `configure_log_config` API and
