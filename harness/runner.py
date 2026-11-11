@@ -53,7 +53,7 @@ from .solvers.data_analysis import solve as solve_data_analysis
 from .solvers.generic import solve as solve_generic
 from .solvers.math import solve as solve_math
 from .solvers.search import solve as solve_search
-from .store import AnswerStore
+from .store import AnswerStore, estimate_theory
 from .task import Task, load_tasks
 from .trace import TraceWriter
 
@@ -205,6 +205,39 @@ def _estimate_tasks(
     return estimates
 
 
+def _record_predictions(
+    tasks: list[Task],
+    estimates: dict[str, CostEstimate],
+    store: AnswerStore,
+    model: str,
+) -> int:
+    """Write one ``predictions.jsonl`` line per task after the initial estimates.
+
+    Called once, before planning, so replans and per-iteration re-estimation do
+    not create duplicates.  This also runs for ``--dry-run`` when ``$OUT`` is
+    writable: the plan predictions are diagnostic and never touch
+    ``answer.txt``.  A read-only ``$OUT`` is logged and ignored instead of
+    failing the run.
+    """
+
+    written = 0
+    for task in tasks:
+        estimate = estimates.get(task.task_id)
+        if estimate is None:
+            continue
+        try:
+            store.record_prediction(task, estimate, model, estimate.solver)
+        except Exception as exc:  # noqa: BLE001 - diagnostics must never kill a run
+            log.warning(
+                "failed to write predictions to %s (%s); diagnostics only",
+                store.predictions_path,
+                type(exc).__name__,
+            )
+            break
+        written += 1
+    return written
+
+
 def _observe_result(
     estimator: Any,
     task: Task,
@@ -343,6 +376,7 @@ def run(options: RunOptions) -> dict[str, Any]:
     }
 
     estimates = _estimate_tasks(tasks, estimator, options.model)
+    _record_predictions(tasks, estimates, store, options.model)
     policy_config = _policy_config(options, ledger.total)
     entries = plan_entries(
         cast("list[TaskLike]", tasks),
@@ -445,6 +479,7 @@ def run(options: RunOptions) -> dict[str, Any]:
                 "error": error or f"persist error: {exc}",
             }
         try:
+            estimate = estimates.get(task.task_id)
             trace.write(
                 task_id=task.task_id,
                 task_type=task.task_type,
@@ -455,6 +490,13 @@ def run(options: RunOptions) -> dict[str, Any]:
                 duration=duration,
                 error=error,
                 notes=result.notes,
+                y_hat=round(float(estimate.expected_cost), 6) if estimate is not None else 0.0,
+                y_actual=_count(result.tokens),
+                theory=estimate_theory(estimate) if estimate is not None else "unknown",
+                estimator_confidence=(
+                    estimate.confidence if estimate is not None else "unknown"
+                ),
+                model=options.model,
             )
         except Exception:  # pragma: no cover - disk failure
             log.exception("failed to write trace for %s", task.task_id)
@@ -724,6 +766,7 @@ def _base_summary(
         "out": str(store.out_dir),
         "solutions_path": str(store.solutions_path),
         "trace_path": str(store.trace_path),
+        "predictions_path": str(store.predictions_path),
         "tasks": len(tasks),
         "planned": planned,
         "infeasible": infeasible,

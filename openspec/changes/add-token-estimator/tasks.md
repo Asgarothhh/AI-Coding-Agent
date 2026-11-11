@@ -33,7 +33,7 @@
 - [ ] 3.1 D1 — Собрать единый Docker image и измерить размеры образа и репозитория. Файлы: `Dockerfile`, `scripts/build.sh`, `eval/results/docker-size.md`. Проверка: `bash scripts/build.sh`. Критерий: сборка менее 1000 секунд, image менее 4 ГБ, в отчёте есть `docker images` и размер репозитория без датасетов, `.git` и весов.
 - [ ] 3.2 D1 — Прогнать точную команду жюри с read-only rootfs. Файлы: `scripts/run_local.sh`, `Dockerfile`. Проверка: `bash scripts/run_local.sh`. Критерий: запуск с `--read-only`, `--tmpfs /tmp`, `HOME=/tmp`, `--cap-drop ALL`, `--cpus 4`, bind mount `$TASKS:/data/tasks:rw` и записью `answer.txt`.
 - [ ] 3.3 D3 — Прогнать 100 задач через fake proxy и проверить конкуренцию ledger. Файлы: `harness/mock_proxy.py`, `tests/contract/test_parallel_contract.py`, `eval/fake_100.py`. Проверка: `python3.11 eval/fake_100.py --tasks 100 --workers 5`. Критерий: все каталоги получают `answer.txt`, бюджетные и временные инварианты целы, одновременные резервы не приводят к двойному расходу.
-- [ ] 3.4 D2 — Оценить финальный контур на реальных traces с отложенным split. Файлы: `eval/run_eval.py`, `eval/metrics.py`, `eval/results/final.md`. Проверка: `python3.11 eval/run_eval.py --traces real --holdout task_id`. Критерий: сначала записаны score, solved и budget_used, затем MAE/MdAPE/WAPE; split идёт по `task_id`/семейству без утечки.
+- [x] 3.4 D2 — Оценить финальный контур на реальных traces с отложенным split. Файлы: `eval/run_eval.py`, `eval/metrics.py`, `eval/results/final.md`. Проверка: `python3.11 eval/run_eval.py --traces real --holdout task_id`. Критерий: сначала записаны score, solved и budget_used, затем MAE/MdAPE/WAPE; split идёт по `task_id`/семейству без утечки.
 
 ## Stage 4 — Стабилизация и заморозка (12 ноября 12:00–18:00)
 
@@ -55,6 +55,8 @@
 - [x] 6.3 D2 — База стоимости планировщика `expected` по умолчанию. Файлы: `harness/policy.py`, `run_agent.py`, `tests/test_policy.py`. Проверка: `python3.11 eval/simulate_policies.py`. Критерий: expected принимает больше задач при том же бюджете, overspend 0 в симуляции.
 - [x] 6.4 D1 — Семафор 3 и retry на 429/5xx. Файлы: `harness/openjiuwen_gateway.py`, `tests/test_openjiuwen_gateway.py`. Проверка: `python3.11 -m unittest tests.test_openjiuwen_gateway -v`. Критерий: 4 воркера дают 16/16, 429 не роняет задачу.
 - [x] 6.5 D2 — Перепланирование всех незапущенных задач с пересчётом оценок; возврат отклонённых задач после фактических наблюдений. Файлы: `harness/runner.py`, `tests/test_integration_planning.py`. Проверка: `python3.11 -m unittest tests.test_integration_planning -v`. Критерий: 100-задачный стресс 100/100, reconsidered 3, дублей записей нет.
+- [x] 6.6 D2 — Выбор модели по измеренным метрикам (`--model-policy metrics`, `harness/model_stats.json`). Файлы: `harness/model_router.py`, `harness/model_stats.json`, `run_agent.py`. Проверка: `python3.11 -m unittest tests.test_model_router -v`. Критерий: выбирается только разрешённая модель с лучшим score/cost; сейчас это qwen3.6-35b-a3b-noreason; fallback явный.
+- [x] 6.7 D2 — `predictions.jsonl`, `y_hat/y_actual/theory` в trace и финальный eval. Файлы: `harness/store.py`, `harness/runner.py`, `eval/run_eval.py`, `eval/metrics.py`. Проверка: `python3.11 eval/run_eval.py --run <OUT> --holdout 0.3`. Критерий: 16 predictions и 16 trace-строк, primary outcome first, split по task_id без утечки, прогнозные метрики честно зафиксированы.
 
 ## Stage 7 — Внешний полигон
 

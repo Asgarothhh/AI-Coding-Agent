@@ -26,6 +26,7 @@ from harness.llm import (
     build_llm_client,
 )
 from harness.mock_proxy import MockProxyServer
+from harness.model_router import select_model
 from harness.policy import COST_BASES, POLICY_NAMES, CostBasis
 from harness.runner import (
     DEFAULT_TIME_LIMIT,
@@ -108,7 +109,32 @@ def build_parser() -> argparse.ArgumentParser:
             "never falls back to stdlib)"
         ),
     )
-    parser.add_argument("--model", default=None, help=f"default model (default: $LLM_MODEL or {DEFAULT_MODEL})")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "default/fallback model (default: $LLM_MODEL or "
+            f"{DEFAULT_MODEL}); with --model-policy metrics the measured "
+            "stats file may select another allowlisted model"
+        ),
+    )
+    parser.add_argument(
+        "--model-policy",
+        choices=("fixed", "metrics"),
+        default="metrics",
+        help=(
+            "model selection policy: metrics (default; best measured "
+            "score/cost from --model-stats) or fixed (always --model)"
+        ),
+    )
+    parser.add_argument(
+        "--model-stats",
+        default="harness/model_stats.json",
+        help=(
+            "measured model stats JSON for --model-policy metrics "
+            "(default: harness/model_stats.json)"
+        ),
+    )
     parser.add_argument("--escalation-model", default=None, help=f"escalation model (default: $LLM_ESCALATION_MODEL or {ESCALATION_MODEL})")
     parser.add_argument("--dry-run", action="store_true", help="print the plan and exit without solving")
     mode = parser.add_mutually_exclusive_group()
@@ -168,7 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    default_model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    selection = select_model(
+        default_model,
+        policy=args.model_policy,
+        stats_path=args.model_stats,
+    )
+    model = selection.model
+    print(f"model: {model} (policy={selection.policy}; {selection.reason})", file=sys.stderr)
     escalation_model = (
         args.escalation_model
         or os.environ.get("LLM_ESCALATION_MODEL")
@@ -243,6 +276,13 @@ def main(argv: list[str] | None = None) -> int:
             ledger=ledger,
         )
         summary = run(options)
+        stats_source = selection.stats.get("source")
+        summary["model_selection"] = {
+            "model": selection.model,
+            "reason": selection.reason,
+            "policy": selection.policy,
+            "source": stats_source,
+        }
         summary["llm_backend"] = chosen_backend
         summary["llm_backend_requested"] = args.llm_backend
         print(json.dumps(summary, ensure_ascii=False, indent=2))

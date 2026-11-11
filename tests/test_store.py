@@ -5,10 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from harness.estimator import CostEstimate
 from harness.solvers.base import SolveResult
 from harness.store import AnswerStore, atomic_write_text, normalize_answer
 from harness.trace import TraceWriter
-
 from tests.support import make_task
 
 
@@ -98,6 +98,94 @@ class StoreTests(unittest.TestCase):
             for key in ("task_id", "type", "reward", "status", "solver", "tokens", "duration", "error"):
                 self.assertIn(key, record)
             self.assertEqual(record["task_id"], "t1")
+
+
+class PredictionTests(unittest.TestCase):
+    def _estimate(self, *, drivers: tuple[str, ...] = ("scope=heuristic",)) -> CostEstimate:
+        return CostEstimate(
+            expected_cost=1.5,
+            upper_cost=3.0,
+            expected_input_tokens=10.0,
+            expected_output_tokens=0.5,
+            confidence="high",
+            model="qwen3.6-35b-a3b-noreason",
+            solver="math",
+            drivers=drivers,
+        )
+
+    def test_predictions_path_lives_next_to_solutions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = AnswerStore(Path(tmp) / "out")
+            self.assertEqual(
+                store.predictions_path, Path(tmp) / "out" / "predictions.jsonl"
+            )
+
+    def test_record_prediction_appends_one_jsonl_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(tmp, "t1")
+            store = AnswerStore(Path(tmp) / "out")
+            estimate = self._estimate()
+            store.record_prediction(task, estimate, "qwen3.6-35b-a3b-noreason", "math")
+            store.record_prediction(task, estimate, "qwen3.6-35b-a3b-noreason", "math")
+
+            lines = store.predictions_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 2)
+            record = json.loads(lines[0])
+            self.assertEqual(
+                set(record),
+                {
+                    "task_id",
+                    "task_type",
+                    "solver",
+                    "model",
+                    "expected_cost",
+                    "upper_cost",
+                    "confidence",
+                    "drivers",
+                    "theory",
+                    "ts",
+                },
+            )
+            self.assertEqual(record["task_id"], "t1")
+            self.assertEqual(record["task_type"], "math")
+            self.assertEqual(record["solver"], "math")
+            self.assertEqual(record["model"], "qwen3.6-35b-a3b-noreason")
+            self.assertEqual(record["expected_cost"], 1.5)
+            self.assertEqual(record["upper_cost"], 3.0)
+            self.assertEqual(record["confidence"], "high")
+            self.assertEqual(record["drivers"], ["scope=heuristic"])
+            self.assertEqual(record["theory"], "heuristic")
+            self.assertIn("+", record["ts"])
+
+    def test_theory_names_estimator_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(tmp, "t1")
+            store = AnswerStore(Path(tmp) / "out")
+            cases = {
+                ("deterministic_solver=true",): "deterministic",
+                ("scope=heuristic",): "heuristic",
+                ("scope=prior", "online_samples=3"): "calibration+online",
+                ("scope=prior",): "calibration",
+            }
+            for drivers, theory in cases.items():
+                with self.subTest(theory=theory):
+                    store.record_prediction(task, self._estimate(drivers=drivers), "m", "s")
+            theories = [
+                json.loads(line)["theory"]
+                for line in store.predictions_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual(theories, list(cases.values()))
+
+    def test_prediction_does_not_touch_answer_txt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(tmp, "t1")
+            store = AnswerStore(Path(tmp) / "out")
+            store.write_answer(task, "42")
+            before = (task.task_dir / "answer.txt").read_text(encoding="utf-8")
+            store.record_prediction(task, self._estimate(), "m", "math")
+            after = (task.task_dir / "answer.txt").read_text(encoding="utf-8")
+            self.assertEqual(before, after)
+            self.assertFalse((task.task_dir / "predictions.jsonl").exists())
 
 
 if __name__ == "__main__":

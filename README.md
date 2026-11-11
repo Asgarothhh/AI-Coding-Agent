@@ -292,6 +292,28 @@ export OJ_EXTRA_BODY='{"chat_template_kwargs": {"enable_thinking": false}}'
 python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 ```
 
+### Model selection
+
+`--model-policy` decides which model the run asks for:
+
+* `metrics` (**default**) — `harness/model_router.py` reads
+  `--model-stats` (default `harness/model_stats.json`), keeps only
+  allowlisted models with measured rows (`tasks > 0`), and picks the maximum
+  `score / cost` (ties: more solved, then lower cost).
+* `fixed` — always use `--model` (or `$LLM_MODEL`, else the built-in
+  default), ignoring the stats file.
+
+Candidates are always the four allowed aliases: `qwen3.8-27b`,
+`qwen3.8-27b-noreason`, `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`.
+Unmeasured aliases are never selected by `metrics`; they stay reachable only
+through `fixed`. The current winner is **`qwen3.6-35b-a3b-noreason`**
+(54 / 3421.8 = **0.0158**), which is also the built-in default. An explicit
+`--model` is the fallback: it is used as-is under `fixed`, and when the stats
+file is missing, malformed or empty the metrics policy returns that model
+with a human-readable reason instead of inventing one. There is still no
+silent substitution on a gateway error — the selection is made once, before
+the run, and logged.
+
 ### Runner
 
 * `ThreadPoolExecutor` with at most **5** parallel sessions
@@ -307,6 +329,59 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
   expected_reward/coverage; `estimator` covers model/total/variant/confidence;
   `budget` covers total/spent/reserved/remaining/prompt_tokens/
   completion_tokens/stopped.
+
+### Predictions and final evaluation
+
+`<OUT>/predictions.jsonl` is diagnostic only: one fsynced JSON line per task,
+written once from the initial estimates **before** planning, so replans and
+per-iteration re-estimation never add duplicate rows. Fields: `task_id`,
+`task_type`, `solver`, `model`, `expected_cost`, `upper_cost`, `confidence`,
+`drivers`, `theory`, `ts`.
+
+`trace.jsonl` carries the audit join: `y_hat` (predicted cost), `y_actual`
+(actual cost), `theory` (the estimator fallback branch behind the prediction),
+`estimator_confidence` and `model`. That makes every forecast checkable
+against what the run actually spent.
+
+`eval/run_eval.py` joins the two files by `task_id`, splits by task id, and
+reports the primary outcome first:
+
+```bash
+python3.11 eval/run_eval.py --run <OUT> --holdout 0.3 --out eval/results/final.md
+```
+
+Measured live 16-task run (gateway, 4 workers, budget 100000, `$OUT` mounted):
+**16/16 solved, score 54, 2343.0 tokens**; `predictions.jsonl` has 16 rows and
+`trace.jsonl` 16 rows; the model selection was
+**`qwen3.6-35b-a3b-noreason`** through the metrics policy (score/cost 0.0158,
+54 / 3421.8).
+
+Final evaluation (`eval/results/final.md`, holdout 0.3, split by `task_id`):
+
+| Block | Metric | Value |
+|---|---|---:|
+| Primary (test split) | tasks | 7 |
+| | score | 24 |
+| | solved | 7/7 |
+| | budget_used | 829.8 |
+| | overruns | 0 |
+| Forecast | n | 2 |
+| | MAE | 3330.10 |
+| | MdAPE | 1118.72% |
+| | WAPE | 802.63% |
+| | bias | 12.187 |
+| | zero-cost excluded | 5 |
+| Interval | PICP | 71.4% |
+| | MPIW | 2643.69 |
+
+Honest reading: the primary outcome is **perfect on the held-out test split**,
+but the forecast diagnostics are poor — the estimator overestimates heavily
+(bias 12.2), MdAPE and WAPE are three-digit, and PICP 71.4% misses the nominal
+interval target. Forecast n is only 2 because 5 of 7 test tasks were
+deterministic/zero-cost and are excluded. MAPE therefore remains a
+**diagnostic** metric, not an optimisation target, and the estimator still
+needs live recalibration before its predictions are trusted for tight
+planning.
 
 ## CLI
 
@@ -330,7 +405,10 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 --max-tokens INT          completion cap per LLM call (default 1024)
 --llm-backend CHOICE      auto | stdlib | openjiuwen | gateway
                           (default auto; gateway is the v5 production path)
---model STR               default model
+--model STR               default/fallback model
+--model-policy CHOICE     fixed | metrics (default metrics: best measured
+                          score/cost from --model-stats; fixed: always --model)
+--model-stats PATH        measured stats JSON (default harness/model_stats.json)
 --escalation-model STR    escalation model
 --dry-run                 plan + JSON summary, no solving
 --mock-llm                start the local mock proxy
@@ -347,7 +425,11 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
   each task
 * `<OUT>/trace.jsonl` — one JSON line per task with
   `task_id`, `type`, `reward`, `status`, `solver`, `tokens`, `duration`,
-  `error`, `notes`
+  `error`, `notes`, and the forecast audit fields `y_hat`, `y_actual`,
+  `theory`, `estimator_confidence`, `model`
+* `<OUT>/predictions.jsonl` — one diagnostic line per task with the initial
+  estimate: `task_id`, `task_type`, `solver`, `model`, `expected_cost`,
+  `upper_cost`, `confidence`, `drivers`, `theory`, `ts`
 
 ## Docker
 

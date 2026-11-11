@@ -6,6 +6,10 @@ by ``fsync`` + ``os.replace`` so a crash cannot leave a half-written answer.
 
 ``solutions.json`` is rewritten after every solution and fsynced, which makes
 per-solution progress durable even if the container is killed.
+
+``predictions.jsonl`` is diagnostic only: one JSON line per task, appended and
+fsynced right after the initial estimates are built (including ``--dry-run``
+when ``$OUT`` is writable).  It never affects ``answer.txt``.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ __all__ = [
     "AnswerStore",
     "atomic_write_bytes",
     "atomic_write_text",
+    "estimate_theory",
     "normalize_answer",
 ]
 
@@ -76,6 +81,24 @@ def atomic_write_text(path: str | Path, text: str, *, mode: int = 0o644) -> Path
     return atomic_write_bytes(path, text.encode("utf-8"), mode=mode)
 
 
+def estimate_theory(estimate: Any) -> str:
+    """Name the estimator path behind one forecast.
+
+    ``deterministic`` means no LLM call is planned, ``heuristic`` means the
+    prompt-character fallback was used, ``calibration+online`` is a calibrated
+    prior adjusted by observed usage, and ``calibration`` is the plain prior.
+    """
+
+    drivers = tuple(str(driver) for driver in (getattr(estimate, "drivers", ()) or ()))
+    if "deterministic_solver=true" in drivers:
+        return "deterministic"
+    if any(driver.startswith("scope=heuristic") for driver in drivers):
+        return "heuristic"
+    if any(driver.startswith("online_samples=") for driver in drivers):
+        return "calibration+online"
+    return "calibration"
+
+
 def normalize_answer(answer: str | None) -> str:
     """Return one plain-text line as required by the challenge contract."""
 
@@ -105,6 +128,7 @@ class AnswerStore:
 
         self._verbose = verbose
         self._records: list[dict[str, Any]] = []
+        self._predictions_path = self._out_dir / "predictions.jsonl"
         self._lock = threading.RLock()
 
     @property
@@ -118,6 +142,47 @@ class AnswerStore:
     @property
     def trace_path(self) -> Path:
         return self._out_dir / "trace.jsonl"
+
+    @property
+    def predictions_path(self) -> Path:
+        return self._predictions_path
+
+    def record_prediction(
+        self,
+        task: Task,
+        estimate: Any,
+        model: str | None = None,
+        solver: str | None = None,
+    ) -> dict[str, Any]:
+        """Append one fsynced JSON line to ``predictions.jsonl``.
+
+        Called once per task right after the initial estimates are built, so
+        later replans never add duplicate lines.  The write is intentionally
+        appending rather than atomic-replace: a crash may lose the last line
+        but never the file, and the record stays streaming-friendly.
+        """
+
+        drivers = [str(driver) for driver in (getattr(estimate, "drivers", ()) or ())]
+        record: dict[str, Any] = {
+            "task_id": task.task_id,
+            "task_type": task.task_type,
+            "solver": str(solver if solver is not None else getattr(estimate, "solver", "")),
+            "model": str(model if model is not None else getattr(estimate, "model", "")),
+            "expected_cost": float(getattr(estimate, "expected_cost", 0.0) or 0.0),
+            "upper_cost": float(getattr(estimate, "upper_cost", 0.0) or 0.0),
+            "confidence": str(getattr(estimate, "confidence", "low")),
+            "drivers": drivers,
+            "theory": estimate_theory(estimate),
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+        with self._lock:
+            self._predictions_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._predictions_path.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+                fh.flush()
+                os.fsync(fh.fileno())
+        return record
 
     def write_answer(self, task: Task, answer: str) -> tuple[Path, ...]:
         """Write the normalised answer to every contract location."""

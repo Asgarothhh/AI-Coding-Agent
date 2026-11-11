@@ -30,10 +30,11 @@ class RunnerTests(unittest.TestCase):
     def test_dry_run_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tasks = copy_examples(Path(tmp) / "tasks")
+            out = Path(tmp) / "out"
             summary = run(
                 RunOptions(
                     tasks_dir=tasks,
-                    out=Path(tmp) / "out",
+                    out=out,
                     dry_run=True,
                     offline=True,
                 )
@@ -206,6 +207,105 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(summary["tokens_spent"], 0.0)
             self.assertEqual(summary["stop_reason"], "budget")
             self.assertEqual(list(tasks.rglob("answer.txt")), [])
+
+    def test_dry_run_writes_plan_predictions_when_out_is_writable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tasks = copy_examples(Path(tmp) / "tasks")
+            out = Path(tmp) / "out"
+            summary = run(
+                RunOptions(
+                    tasks_dir=tasks,
+                    out=out,
+                    dry_run=True,
+                    offline=True,
+                )
+            )
+            self.assertEqual(summary["predictions_path"], str(out / "predictions.jsonl"))
+            self.assertFalse((out / "solutions.json").exists())
+            self.assertFalse((out / "trace.jsonl").exists())
+            self.assertEqual(list(tasks.rglob("answer.txt")), [])
+
+            lines = (out / "predictions.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), summary["tasks"])
+            task_ids = set()
+            for line in lines:
+                record = json.loads(line)
+                for key in (
+                    "task_id",
+                    "task_type",
+                    "solver",
+                    "model",
+                    "expected_cost",
+                    "upper_cost",
+                    "confidence",
+                    "drivers",
+                    "theory",
+                    "ts",
+                ):
+                    self.assertIn(key, record)
+                task_ids.add(record["task_id"])
+                self.assertEqual(record["model"], "qwen3.6-35b-a3b-noreason")
+            self.assertEqual(task_ids, {item["task_id"] for item in summary["plan"]})
+
+    def test_predictions_are_written_once_per_task_and_trace_has_audit_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tasks = copy_examples(Path(tmp) / "tasks")
+            out = Path(tmp) / "out"
+            summary = run(
+                RunOptions(
+                    tasks_dir=tasks,
+                    out=out,
+                    offline=True,
+                    max_workers=1,
+                    time_limit=60,
+                )
+            )
+            self.assertEqual(summary["predictions_path"], str(out / "predictions.jsonl"))
+
+            # One prediction per task even though the runner re-estimates and
+            # replans after each completed task.
+            predictions = [
+                json.loads(line)
+                for line in (out / "predictions.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(len(predictions), 8)
+            self.assertEqual(len({row["task_id"] for row in predictions}), 8)
+            self.assertEqual(
+                {row["task_id"] for row in predictions},
+                {record["task_id"] for record in summary["results"]},
+            )
+            for row in predictions:
+                self.assertGreaterEqual(row["upper_cost"], row["expected_cost"])
+
+            trace = {
+                record["task_id"]: record
+                for record in (
+                    json.loads(line)
+                    for line in (out / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+                )
+            }
+            self.assertEqual(len(trace), 8)
+            for task_id, record in trace.items():
+                with self.subTest(task=task_id):
+                    self.assertIn("y_hat", record)
+                    self.assertIn("y_actual", record)
+                    self.assertIn("theory", record)
+                    self.assertIn("estimator_confidence", record)
+                    self.assertEqual(record["model"], "qwen3.6-35b-a3b-noreason")
+                    if task_id in DETERMINISTIC:
+                        self.assertEqual(record["theory"], "deterministic")
+                        self.assertEqual(record["estimator_confidence"], "high")
+                        self.assertEqual(record["y_hat"], 0.0)
+                        self.assertEqual(record["y_actual"], 0.0)
+                    else:
+                        self.assertNotEqual(record["theory"], "deterministic")
+                        self.assertEqual(record["estimator_confidence"], "low")
+
+            for task_id in DETERMINISTIC:
+                with self.subTest(answer=task_id):
+                    self.assertEqual(_answer(tasks, task_id), expected_for(task_id))
 
     def test_time_limit_stops_new_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

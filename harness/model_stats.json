@@ -1,0 +1,20 @@
+{
+  "source": "README.md Verification / eval/results/live-v5.md: measured live 16-task extended run through the OpenJiuwen gateway (4 workers, budget=100000, examples/task-dir-extended)",
+  "date": "2026-11-10",
+  "measurement": "live run, 16 extended tasks, score = sum of reward for solved tasks, cost = prompt_tokens / 10 + completion_tokens",
+  "notes": "Only qwen3.6-35b-a3b-noreason and qwen3.8-27b were measured. qwen3.6-35b-a3b and qwen3.8-27b-noreason are untested and are therefore never selected by the metrics policy; they remain available through --model-policy fixed.",
+  "models": {
+    "qwen3.6-35b-a3b-noreason": {
+      "tasks": 16,
+      "solved": 16,
+      "score": 54,
+      "cost": 3421.8
+    },
+    "qwen3.8-27b": {
+      "tasks": 16,
+      "solved": 15,
+      "score": 50,
+      "cost": 9251.7
+    }
+  }
+}
