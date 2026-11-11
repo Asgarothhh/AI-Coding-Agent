@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-fix-add",
+  "task_type": "coding",
+  "instruction": "Функция add в calc.py вычитает вместо сложения. Почини.\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

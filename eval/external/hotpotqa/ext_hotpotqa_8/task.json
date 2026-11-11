@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_8",
+  "task_type": "context_qa",
+  "instruction": "The director of the romantic comedy \"Big Stone Gap\" is based in what New York city?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Greenwich Village, New York City",
+  "check": "exact_str"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_5",
+  "task_type": "table_qa",
+  "instruction": "which album released by the band schnell fenster produced the most singles appearing on the australian peak chart?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "The Sound Of Trees",
+  "check": "exact_str"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_2",
+  "task_type": "context_qa",
+  "instruction": "Who was known by his stage name Aladin and helped organizations improve their performance as a consultant?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Eenasul Fateh",
+  "check": "exact_str"
+}

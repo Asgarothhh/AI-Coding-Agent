@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_4",
+  "task_type": "table_qa",
+  "instruction": "in how many games did the winning team score more than 4 points?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "3",
+  "check": "exact_str"
+}

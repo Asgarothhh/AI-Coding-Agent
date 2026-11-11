@@ -495,6 +495,37 @@ infeasible; after the fix all 16 extended tasks are planned and attempted.
 Search fix: markdown retrieval now follows multi-hop relation chains, so the
 search subset is **4/4** offline (reward 10) instead of 2/4.
 
+## External evaluation
+
+Six public datasets were converted into harness fixtures under `eval/external/`
+and run live through the same gateway path (4 workers,
+`OJ_MAX_CONCURRENT_LLM=3`, `OJ_TOKEN_BUDGET=100000`, `--cost-basis expected`,
+model `qwen3.6-35b-a3b-noreason`; the coding datasets used `--test-timeout 10`).
+Command shape, per-dataset notes and the redacted container invocation are in
+`eval/results/external-eval.md`; the fixtures and their counts are described in
+[`eval/external/README.md`](eval/external/README.md).
+
+| Dataset | Tasks | Solved | Failed | Score | Tokens | Elapsed |
+|---|---:|---:|---:|---:|---:|---:|
+| GSM8K | 15 | 15 | 0 | 45 | 349.6 | 68 s |
+| WikiTableQuestions | 15 | 15 | 0 | 45 | 992.0 | 6 s |
+| HotpotQA | 10 | 10 | 0 | 30 | 804.1 | 64 s |
+| MBPP | 15 | 15 | 0 | 30 | 4611.0 | 25 s |
+| QuixBugs | 10 | 10 | 0 | 20 | 6922.4 | 52 s |
+| lorne | 10 | 10 | 0 | 18 | 1310.5 | 68 s |
+| **Total** | **75** | **75** | **0** | **188** | **14989.6** | ~5 min |
+
+The generic solver solved **40/40** math, table and multi-hop tasks (GSM8K,
+WikiTableQuestions, HotpotQA); the coding loop solved **35/35** on MBPP,
+QuixBugs and lorne — **75/75 tasks in total**. The QuixBugs row is a rerun
+(3 workers) after the fenced-code fallback fixed `ext_quixbugs_8`, which had
+previously failed with "LLM did not return a usable full-file patch".
+
+**Caveat:** these are public datasets and are likely contaminated by model
+training. The numbers are robustness evidence that the generic and coding paths
+work on third-party task shapes, not a guarantee on the official 100 tasks.
+Raw summaries: `eval/results/external-{gsm8k,wikitable,hotpotqa,mbpp,quixbugs,lorne}.json`.
+
 ## Tests
 
 The full suite is **250 stdlib unittest tests**, of which **2 are skipped** on

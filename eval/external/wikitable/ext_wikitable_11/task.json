@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_11",
+  "task_type": "table_qa",
+  "instruction": "in 1996 the sc house of representatives had a republican majority. how many years had passed since the last time this happened?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "122",
+  "check": "exact_str"
+}

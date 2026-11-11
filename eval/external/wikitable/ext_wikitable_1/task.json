@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_1",
+  "task_type": "table_qa",
+  "instruction": "how many total points did the bombers score against the bc lions?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "58",
+  "check": "exact_str"
+}

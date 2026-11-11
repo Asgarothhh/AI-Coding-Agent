@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_9",
+  "task_type": "table_qa",
+  "instruction": "what's the number of parishes founded in the 1800s?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "4",
+  "check": "exact_str"
+}

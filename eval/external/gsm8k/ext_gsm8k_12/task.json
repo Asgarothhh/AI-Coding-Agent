@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_12",
+  "task_type": "gsm8k",
+  "instruction": "Toula went to the bakery and bought various types of pastries. She bought 3 dozen donuts which cost $68 per dozen, 2 dozen mini cupcakes which cost $80 per dozen, and 6 dozen mini cheesecakes for $55 per dozen. How much was the total cost?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "694",
+  "check": "exact_int"
+}

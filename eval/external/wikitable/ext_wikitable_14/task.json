@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_14",
+  "task_type": "table_qa",
+  "instruction": "how many beta versions were released before the first full release?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "9",
+  "check": "exact_str"
+}

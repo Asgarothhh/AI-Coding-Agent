@@ -103,6 +103,64 @@ class TriageTests(unittest.TestCase):
             self.assertLess(result.score, DEFAULT_THRESHOLD)
             self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
 
+    def test_download_word_in_math_problem_is_feasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "math_download",
+                task_type="math",
+                instruction=(
+                    "A download manager processes 30 files. Each file takes 4 minutes "
+                    "to download. How many minutes does it take in total?"
+                ),
+            )
+            result = triage(task)
+            self.assertLess(result.score, DEFAULT_THRESHOLD)
+            self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
+
+    def test_download_restart_word_problem_is_feasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "math_download_restart",
+                task_type="math",
+                instruction=(
+                    "Carla is downloading a 200 GB file. Normally she can download "
+                    "2 GB/minute, but 40% of the way through the download, Windows "
+                    "forces a restart. Then Carla has to restart the download from "
+                    "the beginning. How long does it take to download the file?"
+                ),
+            )
+            result = triage(task)
+            self.assertLess(result.score, DEFAULT_THRESHOLD)
+            self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
+
+    def test_download_from_internet_is_infeasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_download_from_internet",
+                task_type="search",
+                instruction="Download the dataset from the internet and compute the mean.",
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertGreaterEqual(result.score, DEFAULT_THRESHOLD)
+            self.assertTrue(any("internet" in reason for reason in result.reasons))
+
+    def test_work_offline_without_network_is_feasible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "net_work_offline",
+                task_type="search",
+                instruction="Work offline; no network. Use only local files.",
+                files={"kb/note.md": "# Note\n"},
+            )
+            result = triage(task)
+            self.assertLess(result.score, DEFAULT_THRESHOLD)
+            self.assertFalse(any("internet" in reason for reason in result.reasons), result.reasons)
+
     def test_download_instruction_is_still_infeasible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(

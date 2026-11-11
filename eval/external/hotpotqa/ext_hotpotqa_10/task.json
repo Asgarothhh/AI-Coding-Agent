@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_10",
+  "task_type": "context_qa",
+  "instruction": "Are the Laleli Mosque and Esma Sultan Mansion located in the same neighborhood?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "no",
+  "check": "exact_str"
+}

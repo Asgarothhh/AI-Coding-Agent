@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_2",
+  "task_type": "table_qa",
+  "instruction": "which is the first city listed alphabetically?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Abbott",
+  "check": "exact_str"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_5",
+  "task_type": "context_qa",
+  "instruction": "Were Scott Derrickson and Ed Wood of the same nationality?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "yes",
+  "check": "exact_str"
+}

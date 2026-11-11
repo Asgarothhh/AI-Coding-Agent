@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_6",
+  "task_type": "table_qa",
+  "instruction": "which model has the most in service?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "KM-45 Series",
+  "check": "exact_str"
+}

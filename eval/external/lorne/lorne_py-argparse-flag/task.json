@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-argparse-flag",
+  "task_type": "coding",
+  "instruction": "Добавь в cli.py флаг --shout: с ним приветствие печатается заглавными буквами (HELLO, BOB!), без флага вывод не меняется (Hello, bob!).\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

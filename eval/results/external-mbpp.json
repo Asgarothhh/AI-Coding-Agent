@@ -1,0 +1,353 @@
+{
+  "dry_run": false,
+  "offline": false,
+  "tasks_dir": "/data/tasks",
+  "out": "/tmp/openjiuwen-out",
+  "solutions_path": "/tmp/openjiuwen-out/solutions.json",
+  "trace_path": "/tmp/openjiuwen-out/trace.jsonl",
+  "tasks": 15,
+  "planned": 15,
+  "infeasible": 0,
+  "policy": "value_cost_greedy",
+  "cost_basis": "expected",
+  "planner": {
+    "policy": "value_cost_greedy",
+    "total": 15,
+    "feasible": 15,
+    "accepted": 15,
+    "coverage": 1.0,
+    "planned_cost": 56175.0,
+    "expected_reward": 9.0,
+    "time_used": 1119.0,
+    "reasons": {
+      "accept": 15
+    },
+    "rejected": 0,
+    "reserve": 10000.0,
+    "cost_basis": "expected"
+  },
+  "estimator": {
+    "model": "qwen3.6-35b-a3b-noreason",
+    "total": 15,
+    "variant": {
+      "deterministic": 0,
+      "heuristic": 0,
+      "calibration": 15
+    },
+    "confidence": {
+      "high": 0,
+      "medium": 0,
+      "low": 15
+    }
+  },
+  "budget_source": "env:OJ_TOKEN_BUDGET",
+  "budget": {
+    "total": 100000.0,
+    "spent": 4610.999999999999,
+    "reserved": 0.0,
+    "remaining": 95389.0,
+    "prompt_tokens": 16230,
+    "completion_tokens": 2988,
+    "stopped": false
+  },
+  "duration": 24.417812,
+  "solved": 15,
+  "skipped": 0,
+  "failed": 0,
+  "errors": 0,
+  "score": 30.0,
+  "tokens_spent": 4611.0,
+  "prompt_tokens": 16230,
+  "completion_tokens": 2988,
+  "model": "qwen3.6-35b-a3b-noreason",
+  "stop_reason": null,
+  "replans": 11,
+  "reconsidered": 0,
+  "final_accepted": 15,
+  "per_type": {
+    "coding": {
+      "total": 15,
+      "planned": 15,
+      "solved": 15,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 4611.0,
+      "reward_solved": 30.0
+    }
+  },
+  "results": [
+    {
+      "timestamp": "2026-11-11T08:54:50.556295+00:00",
+      "task_id": "ext_mbpp_1",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 190.4,
+      "duration": 4.651159,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_1/answer.txt",
+        "/data/tasks/ext_mbpp_1/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:55.670592+00:00",
+      "task_id": "ext_mbpp_10",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 743.2,
+      "duration": 9.76531,
+      "notes": "tests pass after 2 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_10/answer.txt",
+        "/data/tasks/ext_mbpp_10/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:49.996603+00:00",
+      "task_id": "ext_mbpp_11",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 193.4,
+      "duration": 4.091198,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_11/answer.txt",
+        "/data/tasks/ext_mbpp_11/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:50.737678+00:00",
+      "task_id": "ext_mbpp_12",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 163.9,
+      "duration": 4.832003,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_12/answer.txt",
+        "/data/tasks/ext_mbpp_12/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:51.750961+00:00",
+      "task_id": "ext_mbpp_13",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 193.4,
+      "duration": 1.753446,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_13/answer.txt",
+        "/data/tasks/ext_mbpp_13/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:51.739742+00:00",
+      "task_id": "ext_mbpp_14",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 189.0,
+      "duration": 1.182812,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_14/answer.txt",
+        "/data/tasks/ext_mbpp_14/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:53.890712+00:00",
+      "task_id": "ext_mbpp_15",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 264.4,
+      "duration": 3.152408,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_15/answer.txt",
+        "/data/tasks/ext_mbpp_15/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:53.805270+00:00",
+      "task_id": "ext_mbpp_2",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 226.7,
+      "duration": 2.064778,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_2/answer.txt",
+        "/data/tasks/ext_mbpp_2/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:55.306916+00:00",
+      "task_id": "ext_mbpp_3",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 245.5,
+      "duration": 3.555299,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_3/answer.txt",
+        "/data/tasks/ext_mbpp_3/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:55.399214+00:00",
+      "task_id": "ext_mbpp_4",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 257.7,
+      "duration": 1.593159,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_4/answer.txt",
+        "/data/tasks/ext_mbpp_4/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:56.307155+00:00",
+      "task_id": "ext_mbpp_5",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 190.2,
+      "duration": 2.415732,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_5/answer.txt",
+        "/data/tasks/ext_mbpp_5/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:56.517521+00:00",
+      "task_id": "ext_mbpp_6",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 187.5,
+      "duration": 1.209862,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_6/answer.txt",
+        "/data/tasks/ext_mbpp_6/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:58.090811+00:00",
+      "task_id": "ext_mbpp_7",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 317.6,
+      "duration": 2.69099,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_7/answer.txt",
+        "/data/tasks/ext_mbpp_7/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:54:57.208241+00:00",
+      "task_id": "ext_mbpp_8",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 171.2,
+      "duration": 1.537053,
+      "notes": "tests pass after 1 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_8/answer.txt",
+        "/data/tasks/ext_mbpp_8/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:55:10.312713+00:00",
+      "task_id": "ext_mbpp_9",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "solved",
+      "solver": "coding",
+      "answer": "DONE",
+      "tokens": 1076.9,
+      "duration": 14.004921,
+      "notes": "tests pass after 3 LLM iteration(s)",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_mbpp_9/answer.txt",
+        "/data/tasks/ext_mbpp_9/workspace/answer.txt"
+      ]
+    }
+  ],
+  "llm_backend": "openjiuwen-gateway",
+  "llm_backend_requested": "gateway"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_1",
+  "task_type": "context_qa",
+  "instruction": "Who is older, Annie Morton or Terry Richardson?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Terry Richardson",
+  "check": "exact_str"
+}

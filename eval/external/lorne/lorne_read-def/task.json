@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_read-def",
+  "task_type": "file_lookup",
+  "instruction": "В каком файле определена функция process_payment? Ответь полным путём к файлу.\n\nLocate the file inside the current directory and write its path, relative to the current directory, to answer.txt. Write ONLY the path to answer.txt.",
+  "reward": 1,
+  "expected": "lib/payments/stripe_client.py",
+  "check": "exact_str"
+}

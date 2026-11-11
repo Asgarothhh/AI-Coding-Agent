@@ -7,7 +7,10 @@ Flow:
    comparisons, parity, ``sorted``/``reversed``);
 3. otherwise ask the LLM for a full-file replacement, apply it, verify that
    the test files were not touched, and rerun the tests;
-4. write ``DONE`` only when every test passes.
+4. when the reply is not valid JSON, make one conservative attempt to recover
+   a single full-file patch from a fenced code block (or a bare code body when
+   the workspace has exactly one non-test source file);
+5. write ``DONE`` only when every test passes.
 
 The test files are hashed before any write and restored if the LLM tries to
 modify them.
@@ -15,6 +18,7 @@ modify them.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import itertools
 import json
@@ -372,11 +376,100 @@ def _parse_patch(text: str, workdir: Path) -> dict[str, str] | None:
     if patch:
         return patch
 
-    blocks = re.findall(r"```(?:python|py)?\s*\n(.*?)```", text, re.DOTALL)
-    sources = [path.name for path in _source_files(workdir)]
-    if len(blocks) == 1 and len(sources) == 1:
-        return {sources[0]: blocks[0]}
     return None
+
+
+_FENCE_BLOCK = re.compile(r"```([^\n`]*)\r?\n(.*?)```", re.DOTALL)
+_PY_FILE_MENTION = re.compile(
+    r"(?<![\w./\\-])((?:[A-Za-z_][\w.-]*[\\/])*[A-Za-z_][\w.-]*\.py)\b"
+)
+_FILENAME_LABEL = re.compile(
+    r"^\s*(?:#+\s*)?(?:FILE:?\s*)?[*`]{0,2}\s*([\w.-]+\.py)\s*[*`]{0,2}\s*:?\s*$"
+)
+
+
+def _trailing_filename(prefix: str) -> str | None:
+    """Return a filename label on the last non-empty line before a fence."""
+
+    lines = [line.strip() for line in prefix.splitlines() if line.strip()]
+    if not lines:
+        return None
+    match = _FILENAME_LABEL.match(lines[-1])
+    return match.group(1) if match is not None else None
+
+
+def _mentions_multiple_files(text: str) -> bool:
+    names = {
+        match.group(1).replace("\\", "/").rsplit("/", 1)[-1].lower()
+        for match in _PY_FILE_MENTION.finditer(text)
+    }
+    return len(names) > 1
+
+
+def _looks_like_python_file(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    markers = ("\n", "def ", "class ", "import ", "from ", "=", "(", ":")
+    if not any(marker in stripped for marker in markers):
+        return False
+    try:
+        ast.parse(stripped)
+    except (SyntaxError, ValueError):
+        return False
+    return True
+
+
+def _fallback_patch(text: str, workdir: Path) -> dict[str, str] | None:
+    """Conservatively recover one full-file patch from a non-JSON reply.
+
+    The fallback only fires when the workspace has exactly one non-test source
+    file.  It accepts exactly one fenced code block (``python``/``py`` or no
+    info string).  With no fences, the whole reply is used as the file body
+    only when it looks like Python and does not mention several files.  An
+    explicit filename label before the fence must resolve to a safe non-test
+    target; otherwise the fallback refuses to guess.
+    """
+
+    sources = _source_files(workdir)
+    if len(sources) != 1:
+        return None
+    default_target = _safe_patch_name(sources[0].name, workdir)
+    if default_target is None:
+        return None
+
+    blocks = list(_FENCE_BLOCK.finditer(text))
+    if len(blocks) > 1:
+        return None
+    if blocks:
+        block = blocks[0]
+        info = block.group(1).strip().lower()
+        if info not in ("", "python", "py"):
+            return None
+        label = _trailing_filename(text[: block.start()])
+        if label is not None:
+            target = _safe_patch_name(label, workdir)
+            if target is None:
+                return None
+        else:
+            target = default_target
+        content = block.group(2)
+        if not content.strip():
+            return None
+        return {target: content}
+
+    if "```" in text:
+        # Unterminated or unsupported fence: never treat the raw reply as code.
+        return None
+    stripped = text.strip()
+    if stripped.startswith(("{", "[")):
+        # A JSON reply that did not map to a safe patch must stay rejected.
+        return None
+    if _mentions_multiple_files(text):
+        return None
+    if not _looks_like_python_file(text):
+        return None
+    return {default_target: text}
 
 
 def _apply_patch(workdir: Path, patch: dict[str, str]) -> None:
@@ -445,6 +538,8 @@ def solve(task: Task, ctx: SolverContext) -> SolveResult:
         tokens += cost
 
         patch = _parse_patch(response.text, workdir)
+        if not patch:
+            patch = _fallback_patch(response.text, workdir)
         if not patch:
             notes = "LLM did not return a usable full-file patch"
             continue

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_5",
+  "task_type": "gsm8k",
+  "instruction": "Every day, Wendi feeds each of her chickens three cups of mixed chicken feed, containing seeds, mealworms and vegetables to help keep them healthy.  She gives the chickens their feed in three separate meals. In the morning, she gives her flock of chickens 15 cups of feed.  In the afternoon, she gives her chickens another 25 cups of feed.  How many cups of feed does she need to give her chickens in the final meal of the day if the size of Wendi's flock is 20 chickens?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "20",
+  "check": "exact_int"
+}

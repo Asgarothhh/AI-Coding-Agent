@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_4",
+  "task_type": "gsm8k",
+  "instruction": "James decides to run 3 sprints 3 times a week.  He runs 60 meters each sprint.  How many total meters does he run a week?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "540",
+  "check": "exact_int"
+}

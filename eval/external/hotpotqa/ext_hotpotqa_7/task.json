@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_7",
+  "task_type": "context_qa",
+  "instruction": "Are Local H and For Against both from the United States?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "yes",
+  "check": "exact_str"
+}

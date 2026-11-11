@@ -55,3 +55,9 @@
 - [x] 6.3 D2 — База стоимости планировщика `expected` по умолчанию. Файлы: `harness/policy.py`, `run_agent.py`, `tests/test_policy.py`. Проверка: `python3.11 eval/simulate_policies.py`. Критерий: expected принимает больше задач при том же бюджете, overspend 0 в симуляции.
 - [x] 6.4 D1 — Семафор 3 и retry на 429/5xx. Файлы: `harness/openjiuwen_gateway.py`, `tests/test_openjiuwen_gateway.py`. Проверка: `python3.11 -m unittest tests.test_openjiuwen_gateway -v`. Критерий: 4 воркера дают 16/16, 429 не роняет задачу.
 - [x] 6.5 D2 — Перепланирование всех незапущенных задач с пересчётом оценок; возврат отклонённых задач после фактических наблюдений. Файлы: `harness/runner.py`, `tests/test_integration_planning.py`. Проверка: `python3.11 -m unittest tests.test_integration_planning -v`. Критерий: 100-задачный стресс 100/100, reconsidered 3, дублей записей нет.
+
+## Stage 7 — Внешний полигон
+
+- [x] 7.1 D3 — Конвертировать 10 задач lorne (8 coding + 2 file_lookup). Файлы: `eval/import_lorne_tasks.py`, `eval/external/lorne/**`. Проверка: `python3.11 -c "from harness.task import load_tasks; print(len(load_tasks('eval/external/lorne')))"`. Критерий: 10 задач, live 10/10.
+- [x] 7.2 D3 — Конвертировать MBPP и QuixBugs. Файлы: `eval/import_datasets.py`, `eval/external/{mbpp,quixbugs}/**`. Проверка: `python3.11 run_agent.py --tasks-dir eval/external/mbpp --dry-run --offline`. Критерий: MBPP 15/15 live, QuixBugs 10/10 after fenced-code fallback.
+- [x] 7.3 D3 — Конвертировать GSM8K, WikiTableQuestions, HotpotQA. Файлы: `eval/import_datasets.py`, `eval/external/{gsm8k,wikitable,hotpotqa}/**`. Проверка: `python3.11 run_agent.py --tasks-dir eval/external/gsm8k --dry-run --offline`. Критерий: 15/15, 15/15, 10/10 live через generic.

@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-trace-bug",
+  "task_type": "coding",
+  "instruction": "Приложение app.py падает. Подробности в trace.txt. Найди и исправь баг.\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

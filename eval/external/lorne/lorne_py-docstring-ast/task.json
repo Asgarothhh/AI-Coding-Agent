@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-docstring-ast",
+  "task_type": "coding",
+  "instruction": "Добавь функции area в geometry.py аннотации типов (float для width, height и результата) и docstring.\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

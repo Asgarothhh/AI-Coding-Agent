@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_read-const",
+  "task_type": "file_lookup",
+  "instruction": "В каком файле задаётся константа API_TIMEOUT_SECONDS? Ответь полным путём к файлу.\n\nLocate the file inside the current directory and write its path, relative to the current directory, to answer.txt. Write ONLY the path to answer.txt.",
+  "reward": 1,
+  "expected": "settings/defaults.py",
+  "check": "exact_str"
+}

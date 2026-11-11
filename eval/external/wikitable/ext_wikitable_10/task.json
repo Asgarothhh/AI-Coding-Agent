@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_10",
+  "task_type": "table_qa",
+  "instruction": "what club scored the only a total of 79 points?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Málaga CF",
+  "check": "exact_str"
+}

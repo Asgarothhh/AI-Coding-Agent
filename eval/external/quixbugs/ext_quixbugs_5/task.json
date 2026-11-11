@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_quixbugs_5",
+  "task_type": "coding",
+  "instruction": "The file flatten.py contains a buggy implementation. Fix it so that `python3 test_flatten.py` passes. Do not edit the tests. Work only inside the current directory. When you are done, write ONLY the word DONE to the file answer.txt in the current directory.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

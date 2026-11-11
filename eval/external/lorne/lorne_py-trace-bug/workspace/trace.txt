@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "app.py", line 20, in <module>
+    main()
+  File "app.py", line 16, in main
+    print(get("Bob")["name"])
+  File "app.py", line 12, in get
+    return PEOPLE[find(name) + 1]
+IndexError: list index out of range

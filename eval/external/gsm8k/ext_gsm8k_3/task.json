@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_3",
+  "task_type": "gsm8k",
+  "instruction": "Josh decides to try flipping a house.  He buys a house for $80,000 and then puts in $50,000 in repairs.  This increased the value of the house by 150%.  How much profit did he make?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "70000",
+  "check": "exact_int"
+}

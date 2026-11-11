@@ -25,13 +25,25 @@ _FILE_REF_RE = re.compile(
 )
 _IGNORED_FILES = frozenset({"answer.txt", "task.json", "solutions.json", "trace.jsonl"})
 _INTERNET_RE = re.compile(
-    r"(https?://|\bdownload\b|\bweb[\s-]?search\b|\bbrowse\s+the\s+web\b|\binternet\b|\bwget\b|\bcurl\s)",
+    r"("
+    r"https?://"
+    r"|\bweb[\s-]?search\b"
+    r"|\bbrowse\s+the\s+web\b"
+    r"|\binternet\b"
+    r"|\bwget\b"
+    r"|\bcurl\s"
+    # A bare "download" is ordinary math/data vocabulary ("a download manager
+    # processes 30 files"), so only a remote source makes it a network
+    # requirement: "download ... from the internet/web/url".
+    r"|\bdownload(?:s|ed|ing)?\b[^.\n]{0,120}?\bfrom\s+(?:the\s+)?(?:internet|web|url)\b"
+    r")",
     re.IGNORECASE,
 )
 # Prohibitive/negated mentions of the network ("no internet", "work offline",
 # "internet is not available", ...) must not look like a network requirement.
 # Such spans are blanked out before ``_INTERNET_RE`` runs; genuine requirements
-# elsewhere in the instruction (URLs, "download", "wget", ...) are unaffected.
+# elsewhere in the instruction (URLs, "download ... from the internet", "wget",
+# ...) are unaffected.
 _NEGATED_NETWORK_RE = re.compile(
     r"(?:"
     r"\b(?:no|without)\s+(?:internet|network|web)(?:\s+access)?"

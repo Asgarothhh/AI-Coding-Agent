@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-write-test",
+  "task_type": "coding",
+  "instruction": "Реализуй функцию fizzbuzz в fizz.py так, чтобы проходил набор тестов test_fizz.py: для чисел, кратных 15, вернуть \"fizzbuzz\"; для кратных 3 — \"fizz\"; для кратных 5 — \"buzz\"; иначе вернуть str(n).\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

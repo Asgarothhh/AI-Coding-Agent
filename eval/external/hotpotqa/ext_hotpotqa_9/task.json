@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_hotpotqa_9",
+  "task_type": "context_qa",
+  "instruction": "2014 S/S is the debut album of a South Korean boy group that was formed by who?\n\nUse only context.md and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "YG Entertainment",
+  "check": "exact_str"
+}

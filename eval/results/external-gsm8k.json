@@ -1,0 +1,353 @@
+{
+  "dry_run": false,
+  "offline": false,
+  "tasks_dir": "/data/tasks",
+  "out": "/tmp/openjiuwen-out",
+  "solutions_path": "/tmp/openjiuwen-out/solutions.json",
+  "trace_path": "/tmp/openjiuwen-out/trace.jsonl",
+  "tasks": 15,
+  "planned": 15,
+  "infeasible": 0,
+  "policy": "value_cost_greedy",
+  "cost_basis": "expected",
+  "planner": {
+    "policy": "value_cost_greedy",
+    "total": 15,
+    "feasible": 15,
+    "accepted": 15,
+    "coverage": 1.0,
+    "planned_cost": 55447.5,
+    "expected_reward": 13.5,
+    "time_used": 1046.25,
+    "reasons": {
+      "accept": 15
+    },
+    "rejected": 0,
+    "reserve": 10000.0,
+    "cost_basis": "expected"
+  },
+  "estimator": {
+    "model": "qwen3.6-35b-a3b-noreason",
+    "total": 15,
+    "variant": {
+      "deterministic": 0,
+      "heuristic": 0,
+      "calibration": 15
+    },
+    "confidence": {
+      "high": 0,
+      "medium": 0,
+      "low": 15
+    }
+  },
+  "budget_source": "env:OJ_TOKEN_BUDGET",
+  "budget": {
+    "total": 100000.0,
+    "spent": 349.59999999999997,
+    "reserved": 0.0,
+    "remaining": 99650.4,
+    "prompt_tokens": 2936,
+    "completion_tokens": 56,
+    "stopped": false
+  },
+  "duration": 66.959761,
+  "solved": 15,
+  "skipped": 0,
+  "failed": 0,
+  "errors": 0,
+  "score": 45.0,
+  "tokens_spent": 349.6,
+  "prompt_tokens": 2936,
+  "completion_tokens": 56,
+  "model": "qwen3.6-35b-a3b-noreason",
+  "stop_reason": null,
+  "replans": 11,
+  "reconsidered": 0,
+  "final_accepted": 15,
+  "per_type": {
+    "gsm8k": {
+      "total": 15,
+      "planned": 15,
+      "solved": 15,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 349.59999999999997,
+      "reward_solved": 45.0
+    }
+  },
+  "results": [
+    {
+      "timestamp": "2026-11-11T08:51:44.297166+00:00",
+      "task_id": "ext_gsm8k_1",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "18",
+      "tokens": 22.9,
+      "duration": 3.537834,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_1/answer.txt",
+        "/data/tasks/ext_gsm8k_1/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:44.437385+00:00",
+      "task_id": "ext_gsm8k_10",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "460",
+      "tokens": 23.4,
+      "duration": 3.677794,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_10/answer.txt",
+        "/data/tasks/ext_gsm8k_10/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:44.185881+00:00",
+      "task_id": "ext_gsm8k_11",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "162",
+      "tokens": 23.4,
+      "duration": 3.426128,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_11/answer.txt",
+        "/data/tasks/ext_gsm8k_11/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:44.508476+00:00",
+      "task_id": "ext_gsm8k_12",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "738",
+      "tokens": 23.9,
+      "duration": 3.748582,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_12/answer.txt",
+        "/data/tasks/ext_gsm8k_12/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:52:45.310554+00:00",
+      "task_id": "ext_gsm8k_13",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "15",
+      "tokens": 23.1,
+      "duration": 61.123775,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_13/answer.txt",
+        "/data/tasks/ext_gsm8k_13/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:44.876584+00:00",
+      "task_id": "ext_gsm8k_14",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "30",
+      "tokens": 22.2,
+      "duration": 0.578778,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_14/answer.txt",
+        "/data/tasks/ext_gsm8k_14/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:44.783181+00:00",
+      "task_id": "ext_gsm8k_15",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "60",
+      "tokens": 21.6,
+      "duration": 0.345111,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_15/answer.txt",
+        "/data/tasks/ext_gsm8k_15/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:45.057771+00:00",
+      "task_id": "ext_gsm8k_2",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "3",
+      "tokens": 18.0,
+      "duration": 0.548698,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_2/answer.txt",
+        "/data/tasks/ext_gsm8k_2/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:45.398559+00:00",
+      "task_id": "ext_gsm8k_3",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "120000",
+      "tokens": 26.1,
+      "duration": 0.614711,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_3/answer.txt",
+        "/data/tasks/ext_gsm8k_3/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:52:45.918510+00:00",
+      "task_id": "ext_gsm8k_4",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "540",
+      "tokens": 20.9,
+      "duration": 61.041315,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_4/answer.txt",
+        "/data/tasks/ext_gsm8k_4/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:45.520832+00:00",
+      "task_id": "ext_gsm8k_5",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "100",
+      "tokens": 28.5,
+      "duration": 0.462368,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_5/answer.txt",
+        "/data/tasks/ext_gsm8k_5/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:45.777354+00:00",
+      "task_id": "ext_gsm8k_6",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "70",
+      "tokens": 21.9,
+      "duration": 0.378165,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_6/answer.txt",
+        "/data/tasks/ext_gsm8k_6/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:52:47.710727+00:00",
+      "task_id": "ext_gsm8k_7",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "280",
+      "tokens": 21.5,
+      "duration": 62.189222,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_7/answer.txt",
+        "/data/tasks/ext_gsm8k_7/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:46.217866+00:00",
+      "task_id": "ext_gsm8k_8",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "160",
+      "tokens": 24.4,
+      "duration": 0.439915,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_8/answer.txt",
+        "/data/tasks/ext_gsm8k_8/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T08:51:46.651027+00:00",
+      "task_id": "ext_gsm8k_9",
+      "task_type": "gsm8k",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "generic",
+      "answer": "100",
+      "tokens": 27.8,
+      "duration": 0.432519,
+      "notes": "model=qwen3.6-35b-a3b-noreason; attempts=1; answer extracted",
+      "error": null,
+      "answer_paths": [
+        "/data/tasks/ext_gsm8k_9/answer.txt",
+        "/data/tasks/ext_gsm8k_9/workspace/answer.txt"
+      ]
+    }
+  ],
+  "llm_backend": "openjiuwen-gateway",
+  "llm_backend_requested": "gateway"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_7",
+  "task_type": "gsm8k",
+  "instruction": "Toulouse has twice as many sheep as Charleston. Charleston has 4 times as many sheep as Seattle. How many sheep do Toulouse, Charleston, and Seattle have together if Seattle has 20 sheep?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "260",
+  "check": "exact_int"
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_gsm8k_2",
+  "task_type": "gsm8k",
+  "instruction": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?\n\nSolve it and write ONLY the final integer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "3",
+  "check": "exact_int"
+}

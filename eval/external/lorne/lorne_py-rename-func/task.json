@@ -1,0 +1,8 @@
+{
+  "task_id": "lorne_py-rename-func",
+  "task_type": "coding",
+  "instruction": "Переименуй функцию calc_total в total во всех файлах проекта (utils.py, main.py, report.py).\n\nWork only inside the current directory. Run the tests; fix source files only; write ONLY DONE to answer.txt.",
+  "reward": 2,
+  "expected": "tests_pass",
+  "check": "unittest"
+}

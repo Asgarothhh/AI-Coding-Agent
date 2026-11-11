@@ -1,0 +1,8 @@
+{
+  "task_id": "ext_wikitable_7",
+  "task_type": "table_qa",
+  "instruction": "which ship in auckland had the fastest speed in knots?\n\nUse the table in table.csv and write ONLY the final answer to the file answer.txt in the current directory.",
+  "reward": 3,
+  "expected": "Manawanui i",
+  "check": "exact_str"
+}
