@@ -125,10 +125,9 @@ class ExamplesEndToEndTests(unittest.TestCase):
 
             for task_id in CODING_TASKS:
                 with self.subTest(task=task_id):
-                    self.assertFalse((tasks / task_id / "answer.txt").exists())
-                    self.assertFalse(
-                        (tasks / task_id / "workspace" / "answer.txt").exists()
-                    )
+                    answer = tasks / task_id / "answer.txt"
+                    self.assertTrue(answer.is_file())
+                    self.assertEqual(answer.read_text(encoding="utf-8"), "")
 
             solutions = json.loads(
                 (out / "solutions.json").read_text(encoding="utf-8")

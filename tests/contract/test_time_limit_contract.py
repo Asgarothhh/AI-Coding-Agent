@@ -80,7 +80,9 @@ class TimeLimitContractTests(unittest.TestCase):
             self.assertEqual(summary["solved"], 0)
             self.assertEqual(summary["skipped"], len(task_ids))
             self.assertEqual(summary["stop_reason"], "time_limit")
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            for path in root.rglob("answer.txt"):
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+            self.assertTrue(list(root.rglob("answer.txt")))
 
     def test_small_positive_limit_stops_new_tasks_and_returns_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,13 +128,18 @@ class TimeLimitContractTests(unittest.TestCase):
             ):
                 self.assertIn(key, summary)
 
-            # Only the task that actually ran may own an answer file.
+            # Placeholders exist for every loaded task; only the run task is non-empty.
             answers = sorted(root.rglob("answer.txt"))
-            self.assertEqual(len(answers), 2)  # root + workspace of math_00
+            self.assertGreaterEqual(len(answers), TASK_COUNT)
             self.assertEqual(
                 (root / task_ids[0] / "answer.txt").read_text(encoding="utf-8"),
                 task_ids[0] + "\n",
             )
+            for task_id in task_ids[1:]:
+                self.assertEqual(
+                    (root / task_id / "answer.txt").read_text(encoding="utf-8"),
+                    "",
+                )
 
 
 if __name__ == "__main__":

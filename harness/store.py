@@ -184,6 +184,22 @@ class AnswerStore:
                 os.fsync(fh.fileno())
         return record
 
+    def ensure_placeholder(self, task: Task) -> tuple[Path, ...]:
+        """Create empty ``answer.txt`` files when they do not yet exist.
+
+        An empty file is required by the challenge path contract and is never
+        counted as a solved answer.
+        """
+
+        written: list[Path] = []
+        with self._lock:
+            for location in task.answer_locations():
+                if location.exists():
+                    continue
+                location.parent.mkdir(parents=True, exist_ok=True)
+                written.append(atomic_write_bytes(location, b""))
+        return tuple(written)
+
     def write_answer(self, task: Task, answer: str) -> tuple[Path, ...]:
         """Write the normalised answer to every contract location."""
 

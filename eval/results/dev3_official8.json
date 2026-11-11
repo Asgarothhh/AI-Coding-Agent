@@ -1,0 +1,262 @@
+{
+  "dry_run": false,
+  "offline": true,
+  "tasks_dir": "/tmp/tmp.EtTXAHexjV/task-dir",
+  "out": "/tmp/openjiuwen-out",
+  "solutions_path": "/tmp/openjiuwen-out/solutions.json",
+  "trace_path": "/tmp/openjiuwen-out/trace.jsonl",
+  "predictions_path": "/tmp/openjiuwen-out/predictions.jsonl",
+  "tasks": 8,
+  "planned": 8,
+  "infeasible": 0,
+  "policy": "value_cost_greedy",
+  "cost_basis": "expected",
+  "planner": {
+    "policy": "value_cost_greedy",
+    "total": 8,
+    "feasible": 8,
+    "accepted": 8,
+    "coverage": 1.0,
+    "planned_cost": 7490.0,
+    "expected_reward": 17.2,
+    "time_used": 155.2,
+    "reasons": {
+      "accept": 8
+    },
+    "rejected": 0,
+    "reserve": 5000.0,
+    "cost_basis": "expected"
+  },
+  "estimator": {
+    "model": "qwen3.6-35b-a3b-noreason",
+    "total": 8,
+    "variant": {
+      "deterministic": 6,
+      "heuristic": 0,
+      "calibration": 2
+    },
+    "confidence": {
+      "high": 6,
+      "medium": 0,
+      "low": 2
+    }
+  },
+  "budget_source": "offline-default",
+  "budget": {
+    "total": 100000.0,
+    "spent": 0.0,
+    "reserved": 0.0,
+    "remaining": 100000.0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "stopped": false
+  },
+  "duration": 0.111813,
+  "solved": 6,
+  "skipped": 0,
+  "failed": 2,
+  "errors": 0,
+  "score": 16.0,
+  "tokens_spent": 0.0,
+  "prompt_tokens": 0,
+  "completion_tokens": 0,
+  "model": null,
+  "stop_reason": null,
+  "replans": 7,
+  "reconsidered": 0,
+  "final_accepted": 8,
+  "per_type": {
+    "coding": {
+      "total": 2,
+      "planned": 2,
+      "solved": 0,
+      "skipped": 0,
+      "failed": 2,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 0.0
+    },
+    "data_analysis": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 6.0
+    },
+    "math": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 7.0
+    },
+    "search": {
+      "total": 2,
+      "planned": 2,
+      "solved": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "tokens": 0.0,
+      "reward_solved": 3.0
+    }
+  },
+  "results": [
+    {
+      "timestamp": "2026-11-11T23:10:56.562126+00:00",
+      "task_id": "coding_0003",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "failed",
+      "solver": "coding",
+      "answer": null,
+      "tokens": 0.0,
+      "duration": 0.046205,
+      "notes": "tests fail and no LLM is available",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/coding_0003/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/coding_0003/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.608932+00:00",
+      "task_id": "coding_0007",
+      "task_type": "coding",
+      "reward": 2.0,
+      "check": "unittest",
+      "status": "failed",
+      "solver": "coding",
+      "answer": null,
+      "tokens": 0.0,
+      "duration": 0.045649,
+      "notes": "tests fail and no LLM is available",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/coding_0007/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/coding_0007/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.509709+00:00",
+      "task_id": "data_analysis_0002",
+      "task_type": "data_analysis",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "data_analysis",
+      "answer": "158",
+      "tokens": 0.0,
+      "duration": 0.000908,
+      "notes": "sum units over 4/20 rows in sales.csv (product='widget', months=7..8)",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/data_analysis_0002/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/data_analysis_0002/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.510998+00:00",
+      "task_id": "data_analysis_0006",
+      "task_type": "data_analysis",
+      "reward": 3.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "data_analysis",
+      "answer": "284",
+      "tokens": 0.0,
+      "duration": 0.000798,
+      "notes": "sum units over 11/300 rows in sales.csv (product='widget', months=5..6)",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/data_analysis_0006/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/data_analysis_0006/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.508019+00:00",
+      "task_id": "math_0000",
+      "task_type": "math",
+      "reward": 5.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "math",
+      "answer": "389",
+      "tokens": 0.0,
+      "duration": 0.001157,
+      "notes": "parsed 5 operation(s)",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/math_0000/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.511647+00:00",
+      "task_id": "math_0004",
+      "task_type": "math",
+      "reward": 2.0,
+      "check": "exact_int",
+      "status": "solved",
+      "solver": "math",
+      "answer": "1735",
+      "tokens": 0.0,
+      "duration": 0.000195,
+      "notes": "parsed 2 operation(s)",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/math_0004/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.515413+00:00",
+      "task_id": "search_0001",
+      "task_type": "search",
+      "reward": 1.0,
+      "check": "exact_str",
+      "status": "solved",
+      "solver": "search",
+      "answer": "1983",
+      "tokens": 0.0,
+      "duration": 0.001337,
+      "notes": "person_irina_smith.md: born",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/search_0001/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/search_0001/workspace/answer.txt"
+      ]
+    },
+    {
+      "timestamp": "2026-11-11T23:10:56.513619+00:00",
+      "task_id": "search_0005",
+      "task_type": "search",
+      "reward": 2.0,
+      "check": "exact_str",
+      "status": "solved",
+      "solver": "search",
+      "answer": "Osaka",
+      "tokens": 0.0,
+      "duration": 0.001603,
+      "notes": "company_fjord_data.md: headquarters via employer='Fjord Data'",
+      "error": null,
+      "answer_paths": [
+        "/tmp/tmp.EtTXAHexjV/task-dir/search_0005/answer.txt",
+        "/tmp/tmp.EtTXAHexjV/task-dir/search_0005/workspace/answer.txt"
+      ]
+    }
+  ],
+  "model_selection": {
+    "model": "qwen3.6-35b-a3b-noreason",
+    "reason": "metrics policy: highest measured score/cost 0.0158 (score=54, cost=3421.8, solved=16/16)",
+    "policy": "metrics",
+    "source": "README.md Verification / eval/results/live-v5.md: measured live 16-task extended run through the OpenJiuwen gateway (4 workers, budget=100000, examples/task-dir-extended)"
+  },
+  "llm_backend": "offline",
+  "llm_backend_requested": "auto"
+}

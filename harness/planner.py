@@ -45,6 +45,7 @@ from .policy import (
     summarize,
     value_cost_greedy,
 )
+from .solveability import check_solveability
 from .task import Task
 from .triage import DEFAULT_THRESHOLD, TriageResult, triage
 
@@ -139,10 +140,10 @@ def build_plan(tasks: list[Task], threshold: float = DEFAULT_THRESHOLD) -> list[
         estimated = estimate_cost(task)
         priority = task.reward / max(estimated, 1.0)
 
-        if triage_result.infeasible:
-            joined = "; ".join(triage_result.reasons) or "triage threshold reached"
+        verdict = check_solveability(task)
+        if verdict.impossible:
             status = "skipped"
-            reason = f"triage {triage_result.score:.2f} >= {threshold:.2f}: {joined}"
+            reason = f"impossible {verdict.reason_code}: {verdict.explanation}"
         else:
             status = "planned"
             kind = "deterministic" if deterministic else "llm"

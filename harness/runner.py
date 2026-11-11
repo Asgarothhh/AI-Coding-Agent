@@ -72,6 +72,7 @@ _SOLVERS: dict[str, Callable[[Task, SolverContext], SolveResult]] = {
     "data_analysis": solve_data_analysis,
     "coding": solve_coding,
 }
+_DETERMINISTIC_SOLVERS = frozenset({"math", "search", "data_analysis"})
 
 MAX_PARALLEL_SESSIONS = 5
 
@@ -91,7 +92,7 @@ class RunOptions:
     max_workers: int = 4
     time_limit: float = DEFAULT_TIME_LIMIT
     triage_threshold: float = 0.6
-    max_iterations: int = 6
+    max_iterations: int = 3
     mutation_repair: bool = False
     test_timeout: float = 60.0
     max_tokens: int = 1024
@@ -257,9 +258,10 @@ def _observe_result(
     if not callable(observe):
         return
     try:
+        solver = result.solver if result.solver == "generic" else _solver_name(task)
         observe(
             task,
-            _solver_name(task),
+            solver,
             model,
             {"input_tokens": 0, "output_tokens": float(result.tokens)},
         )
@@ -355,6 +357,9 @@ def run(options: RunOptions) -> dict[str, Any]:
     started = time.monotonic()
     tasks = load_tasks(options.tasks_dir)
     store = AnswerStore(options.out, verbose=options.verbose)
+    if not options.dry_run:
+        for task in tasks:
+            store.ensure_placeholder(task)
     trace = TraceWriter(store.trace_path, verbose=options.verbose)
     ledger: BudgetLedger = options.ledger or BudgetLedger(
         options.budget,
@@ -520,6 +525,28 @@ def run(options: RunOptions) -> dict[str, Any]:
         context = SolverContext(budget=solver_budget, llm=llm, options=solver_options)
         try:
             result = solver(task, context)
+            if (
+                result.answer is None
+                and task.task_type in _DETERMINISTIC_SOLVERS
+                and llm is not None
+                and getattr(llm, "available", False)
+            ):
+                generic_result = solve_generic(task, context)
+                tokens = result.tokens + generic_result.tokens
+                if generic_result.answer is not None:
+                    result = SolveResult(
+                        generic_result.answer,
+                        tokens,
+                        generic_result.solver,
+                        f"{result.notes}; generic fallback: {generic_result.notes}",
+                    )
+                else:
+                    result = SolveResult(
+                        None,
+                        tokens,
+                        generic_result.solver or result.solver,
+                        f"{result.notes}; generic fallback: {generic_result.notes}",
+                    )
         except BudgetExhausted as exc:
             result = SolveResult(None, 0.0, task.task_type, f"budget stop: {exc}")
         except Exception as exc:

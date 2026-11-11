@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "seed": 2026,
+  "tasks": 100,
+  "workers": 5,
+  "solved": 59,
+  "failed": 17,
+  "skipped": 16,
+  "score": 76.0,
+  "tokens_spent": 360.0,
+  "fake_llm_calls": 68,
+  "budget": {
+    "total": 100000.0,
+    "spent": 360.0,
+    "reserved": 0.0,
+    "remaining": 99640.0,
+    "prompt_tokens": 600,
+    "completion_tokens": 300,
+    "stopped": false
+  },
+  "errors": [],
+  "tree_hash": "228d6d0b485ac653007713f22b9190ed042cc5489b384bfceef783b7fd51a96d"
+}

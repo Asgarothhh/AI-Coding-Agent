@@ -34,6 +34,12 @@ from typing import Sequence
 from .base import SolveResult, SolverContext
 from ..budget import BudgetExhausted
 from ..llm import LLMError
+from ..patch import (
+    PatchError,
+    PatchNotFound,
+    apply_search_replace_file,
+    parse_search_replace,
+)
 from ..store import atomic_write_bytes, atomic_write_text
 from ..task import Task
 
@@ -304,9 +310,12 @@ def _build_messages(
             continue
         test_blocks.append(f"### TEST (read-only): {path.name}\n```python\n{_truncate(text, _TEST_LIMIT)}\n```")
 
+    diagnostic = _first_diagnostic(test_output)
     system = (
         "You are a precise Python repair agent. Fix the source files so the provided "
-        "tests pass. Never modify test files. Return ONLY a JSON object of the form "
+        "tests pass. Never modify test files. Prefer SEARCH/REPLACE hunks:\n"
+        "path.py\n<<<<<<< SEARCH\nexact lines\n=======\nreplacement\n>>>>>>> REPLACE\n"
+        "If a unique hunk is not possible, return ONLY JSON "
         '{"files": {"name.py": "<full corrected file content>"}} with no prose.'
     )
     user = (
@@ -314,8 +323,9 @@ def _build_messages(
         f"Attempt: {iteration + 1}\n\n"
         "Source files:\n" + "\n\n".join(source_blocks) + "\n\n"
         "Tests (do not edit):\n" + "\n\n".join(test_blocks) + "\n\n"
-        f"Current test output:\n```\n{_truncate(test_output, _OUTPUT_LIMIT)}\n```\n\n"
-        "Return the complete corrected content of every source file that must change."
+        "First diagnostic error:\n"
+        f"```\n{_truncate(diagnostic, 1200)}\n```\n\n"
+        "Return SEARCH/REPLACE hunks or the complete corrected content of files that must change."
     )
     return [
         {"role": "system", "content": system},
@@ -472,12 +482,78 @@ def _fallback_patch(text: str, workdir: Path) -> dict[str, str] | None:
     return {default_target: text}
 
 
+def _first_diagnostic(output: str) -> str:
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return "no test output"
+    for needle in (
+        "AssertionError",
+        "SyntaxError",
+        "TIMEOUT",
+        "Error:",
+        "FAILED",
+        "FileNotFoundError",
+    ):
+        for index, line in enumerate(lines):
+            if needle in line:
+                start = max(0, index - 2)
+                end = min(len(lines), index + 4)
+                return "\n".join(lines[start:end])
+    return "\n".join(lines[-12:])
+
+
+def _apply_search_hunks(task: Task, workdir: Path, text: str) -> str | None:
+    sources = _source_files(workdir)
+    default = sources[0].name if len(sources) == 1 else ""
+    hunks = parse_search_replace(text, default_path=default)
+    if not hunks:
+        return None
+    originals: dict[Path, str] = {}
+    try:
+        for hunk in hunks:
+            name = hunk.path or default
+            safe = _safe_patch_name(name, workdir)
+            if safe is None:
+                raise _PatchError(f"refusing SEARCH/REPLACE target {name!r}")
+            target = workdir / safe
+            if target not in originals:
+                originals[target] = target.read_text(encoding="utf-8")
+            apply_search_replace_file(
+                task.task_dir,
+                str(target.relative_to(task.task_dir)),
+                hunk.search,
+                hunk.replace,
+                workdir=workdir,
+            )
+        for path in originals:
+            if path.suffix == ".py":
+                ast.parse(path.read_text(encoding="utf-8"))
+    except (PatchError, SyntaxError, UnicodeDecodeError, OSError) as exc:
+        for path, content in originals.items():
+            atomic_write_text(path, content)
+        closest = getattr(exc, "closest", "")
+        extra = f"\nclosest_window:\n{closest}" if closest else ""
+        raise _PatchError(f"{type(exc).__name__}: {exc}{extra}") from exc
+    return "search_replace"
+
+
 def _apply_patch(workdir: Path, patch: dict[str, str]) -> None:
-    for name, content in patch.items():
-        safe = _safe_patch_name(name, workdir)
-        if safe is None:
-            raise _PatchError(f"refusing to patch {name!r}")
-        atomic_write_text(workdir / safe, content)
+    originals: dict[Path, str] = {}
+    try:
+        for name, content in patch.items():
+            safe = _safe_patch_name(name, workdir)
+            if safe is None:
+                raise _PatchError(f"refusing to patch {name!r}")
+            target = workdir / safe
+            if target.is_file():
+                originals[target] = target.read_text(encoding="utf-8")
+            if safe.endswith(".py"):
+                ast.parse(content)
+            atomic_write_text(target, content)
+    except (_PatchError, SyntaxError, UnicodeDecodeError, OSError) as exc:
+        for path, body in originals.items():
+            atomic_write_text(path, body)
+        raise _PatchError(f"invalid patch: {exc}") from exc
 
 
 # -- entry point --------------------------------------------------------------
@@ -537,17 +613,25 @@ def solve(task: Task, ctx: SolverContext) -> SolveResult:
         )
         tokens += cost
 
-        patch = _parse_patch(response.text, workdir)
-        if not patch:
-            patch = _fallback_patch(response.text, workdir)
-        if not patch:
-            notes = "LLM did not return a usable full-file patch"
-            continue
-
         try:
-            _apply_patch(workdir, patch)
-        except _PatchError as exc:
+            applied = False
+            try:
+                applied = bool(_apply_search_hunks(task, workdir, response.text))
+            except _PatchError as hunk_exc:
+                notes = str(hunk_exc)
+                last_output = f"{last_output}\n{hunk_exc}"
+            if not applied:
+                patch = _parse_patch(response.text, workdir)
+                if not patch:
+                    patch = _fallback_patch(response.text, workdir)
+                if not patch:
+                    if notes in {"", "tests still fail"}:
+                        notes = "LLM did not return a usable patch"
+                    continue
+                _apply_patch(workdir, patch)
+        except (PatchNotFound, PatchError, _PatchError) as exc:
             notes = str(exc)
+            last_output = f"{last_output}\n{exc}"
             continue
 
         violations = _verify_tests(snapshot)

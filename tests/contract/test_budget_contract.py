@@ -176,7 +176,9 @@ class BudgetZeroTests(unittest.TestCase):
             self.assertEqual(summary["prompt_tokens"], 0)
             self.assertEqual(summary["completion_tokens"], 0)
             self.assertEqual(fake.calls, 0)
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            for path in root.rglob("answer.txt"):
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+            self.assertTrue(list(root.rglob("answer.txt")))
 
 
 class ReserveTests(unittest.TestCase):
@@ -214,7 +216,9 @@ class ReserveTests(unittest.TestCase):
             self.assertEqual(summary["solved"], 0)
             self.assertEqual(summary["skipped"], 3)
             self.assertEqual(summary["stop_reason"], "budget")
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            for path in root.rglob("answer.txt"):
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+            self.assertTrue(list(root.rglob("answer.txt")))
 
 
 class LedgerContractTests(unittest.TestCase):
@@ -310,7 +314,9 @@ class GlobalExhaustionTests(unittest.TestCase):
             self.assertEqual(summary["tokens_spent"], 250.0)
             self.assertEqual(fake.calls, 1)
             self.assertEqual(summary["budget"]["spent"], 250.0)
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            for path in root.rglob("answer.txt"):
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+            self.assertTrue(list(root.rglob("answer.txt")))
 
 
 class FakeLLMUsageTests(unittest.TestCase):
@@ -343,7 +349,9 @@ class FakeLLMUsageTests(unittest.TestCase):
             self.assertEqual(summary["failed"], 1)
             record = summary["results"][0]
             self.assertEqual(record["tokens"], 30.0)
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+            for path in root.rglob("answer.txt"):
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+            self.assertTrue(list(root.rglob("answer.txt")))
 
 
 if __name__ == "__main__":

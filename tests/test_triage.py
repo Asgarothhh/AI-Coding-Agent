@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from harness.solveability import check_solveability
 from harness.task import load_tasks
 from harness.triage import DEFAULT_THRESHOLD, triage
 
@@ -187,7 +188,7 @@ class TriageTests(unittest.TestCase):
             self.assertGreaterEqual(result.score, DEFAULT_THRESHOLD)
             self.assertTrue(any("internet" in reason for reason in result.reasons))
 
-    def test_contradictory_instruction_is_infeasible(self) -> None:
+    def test_contradictory_instruction_is_scoring_signal_not_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(
                 tmp,
@@ -195,9 +196,11 @@ class TriageTests(unittest.TestCase):
                 task_type="math",
                 instruction="The answer is 5 and the answer is 7, which is contradictory and impossible.",
             )
-            self.assertTrue(triage(task).infeasible)
+            # D2 scoring helper may still mention the phrase; skip uses solveability.
+            self.assertGreaterEqual(triage(task).score, 0.0)
+            self.assertNotEqual(check_solveability(task).verdict, "impossible")
 
-    def test_math_without_numbers_is_infeasible(self) -> None:
+    def test_math_without_numbers_is_scoring_signal_not_skip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(
                 tmp,
@@ -206,8 +209,8 @@ class TriageTests(unittest.TestCase):
                 instruction="Compute the total number of boxes described in the missing table.",
             )
             result = triage(task)
-            self.assertTrue(result.infeasible)
             self.assertGreaterEqual(result.score, 0.7)
+            self.assertNotEqual(check_solveability(task).verdict, "impossible")
 
     def test_threshold_is_configurable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

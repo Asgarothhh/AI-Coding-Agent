@@ -25,6 +25,16 @@ class StoreTests(unittest.TestCase):
             leftovers = [p.name for p in task.task_dir.iterdir() if p.name.startswith(".answer")]
             self.assertEqual(leftovers, [])
 
+    def test_ensure_placeholder_creates_empty_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(tmp, "ph", workspace=False)
+            store = AnswerStore(Path(tmp) / "out")
+            paths = store.ensure_placeholder(task)
+            self.assertEqual(paths, (task.task_dir / "answer.txt",))
+            self.assertEqual(paths[0].read_text(encoding="utf-8"), "")
+            store.ensure_placeholder(task)
+            self.assertEqual(paths[0].read_text(encoding="utf-8"), "")
+
     def test_write_answer_without_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(tmp, "bare", workspace=False)

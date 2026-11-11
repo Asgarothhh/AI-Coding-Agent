@@ -2,9 +2,9 @@
 
 The challenge checker looks for ``answer.txt`` next to ``task.json`` and,
 when a ``workspace/`` directory exists, also inside the workspace.  Tasks that
-are structurally infeasible must not leave an answer behind, and
-``solutions.json`` must be flushed after every single solution so partial
-progress survives a killed container.
+are structurally infeasible still get an empty placeholder ``answer.txt``,
+which is never counted as solved, and ``solutions.json`` must be flushed after
+every single solution so partial progress survives a killed container.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ class AnswerLocationTests(unittest.TestCase):
             )
             self.assertFalse((task.task_dir / "workspace").exists())
 
-    def test_infeasible_tasks_leave_no_answer_in_either_location(self) -> None:
+    def test_infeasible_tasks_keep_empty_placeholder_answers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "tasks"
             missing_file = make_task(
@@ -116,10 +116,13 @@ class AnswerLocationTests(unittest.TestCase):
             self.assertEqual(summary["skipped"], 2)
             for task in (missing_file, empty_kb):
                 with self.subTest(task=task.task_id):
-                    self.assertFalse((task.task_dir / "answer.txt").exists())
+                    answer = task.task_dir / "answer.txt"
+                    self.assertTrue(answer.is_file())
+                    self.assertEqual(answer.read_text(encoding="utf-8"), "")
                     if task.workspace is not None:
-                        self.assertFalse((task.workspace / "answer.txt").exists())
-            self.assertEqual(list(root.rglob("answer.txt")), [])
+                        extra = task.workspace / "answer.txt"
+                        self.assertTrue(extra.is_file())
+                        self.assertEqual(extra.read_text(encoding="utf-8"), "")
 
 
 class SolutionsJsonTests(unittest.TestCase):

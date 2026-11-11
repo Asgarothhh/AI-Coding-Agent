@@ -45,7 +45,7 @@ class PlannerTests(unittest.TestCase):
             plan = build_plan([feasible, infeasible, coding])
             self.assertEqual(plan[-1].task.task_id, "search_bad")
             self.assertEqual(plan[-1].status, "skipped")
-            self.assertIn("triage", plan[-1].reason)
+            self.assertIn("impossible", plan[-1].reason)
             self.assertEqual([item.status for item in plan[:2]], ["planned", "planned"])
 
     def test_cost_estimates_are_bounded(self) -> None:

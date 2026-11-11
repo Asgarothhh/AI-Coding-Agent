@@ -14,7 +14,7 @@ __all__ = ["SolveResult", "Solver", "SolverContext", "SolverOptions"]
 
 @dataclass(frozen=True, slots=True)
 class SolverOptions:
-    max_iterations: int = 6
+    max_iterations: int = 3
     mutation_repair: bool = False
     test_timeout: float = 60.0
     mutation_time_budget: float = 20.0

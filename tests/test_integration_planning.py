@@ -179,10 +179,9 @@ class PlanningIntegrationTests(unittest.TestCase):
             records = {record["task_id"]: record for record in solutions["solutions"]}
             self.assertEqual(records["math_second"]["status"], "skipped")
             self.assertEqual(records["math_second"]["notes"], "reject:cost")
-            self.assertFalse((root / "math_second" / "answer.txt").exists())
-            self.assertFalse(
-                (root / "math_second" / "workspace" / "answer.txt").exists()
-            )
+            skipped_answer = root / "math_second" / "answer.txt"
+            self.assertTrue(skipped_answer.is_file())
+            self.assertEqual(skipped_answer.read_text(encoding="utf-8"), "")
 
             trace = {
                 json.loads(line)["task_id"]: json.loads(line)
@@ -312,7 +311,9 @@ class PlanningIntegrationTests(unittest.TestCase):
                 sorted(row["task_id"] for row in trace_rows),
                 ["math_first", "math_second"],
             )
-            self.assertFalse((root / "math_second" / "answer.txt").exists())
+            skipped_answer = root / "math_second" / "answer.txt"
+            self.assertTrue(skipped_answer.is_file())
+            self.assertEqual(skipped_answer.read_text(encoding="utf-8"), "")
 
     def test_impossible_rejection_has_no_answer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -349,10 +350,9 @@ class PlanningIntegrationTests(unittest.TestCase):
             self.assertEqual(summary["solved"], 1)
             self.assertEqual(summary["planner"]["reasons"]["reject:impossible"], 1)
             self.assertEqual(solver.calls, ["math_ok"])
-            self.assertFalse((root / "search_bad" / "answer.txt").exists())
-            self.assertFalse(
-                (root / "search_bad" / "workspace" / "answer.txt").exists()
-            )
+            bad_answer = root / "search_bad" / "answer.txt"
+            self.assertTrue(bad_answer.is_file())
+            self.assertEqual(bad_answer.read_text(encoding="utf-8"), "")
 
     def test_zero_time_limit_rejects_every_task_as_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,7 +379,9 @@ class PlanningIntegrationTests(unittest.TestCase):
             self.assertEqual(summary["skipped"], 2)
             self.assertEqual(summary["stop_reason"], "time_limit")
             self.assertEqual(summary["planner"]["reasons"]["reject:time"], 2)
-            self.assertEqual(_answers(root), [])
+            answers = _answers(root)
+            self.assertTrue(answers)
+            self.assertTrue(all(path.read_text(encoding="utf-8") == "" for path in answers))
 
     def test_replan_uses_live_ledger_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

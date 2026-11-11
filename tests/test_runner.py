@@ -23,7 +23,10 @@ CODING = ("coding_0003", "coding_0007")
 
 def _answer(root: Path, task_id: str) -> str | None:
     path = root / task_id / "answer.txt"
-    return path.read_text(encoding="utf-8").strip() if path.is_file() else None
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return text or None
 
 
 class RunnerTests(unittest.TestCase):
@@ -99,7 +102,8 @@ class RunnerTests(unittest.TestCase):
                 with self.subTest(task=task_id):
                     self.assertIsNone(_answer(tasks, task_id))
                     workspace_answer = tasks / task_id / "workspace" / "answer.txt"
-                    self.assertFalse(workspace_answer.exists())
+                    self.assertTrue(workspace_answer.is_file())
+                    self.assertEqual(workspace_answer.read_text(encoding="utf-8"), "")
 
             per_type = summary["per_type"]
             self.assertEqual(per_type["math"]["solved"], 2)
@@ -206,7 +210,9 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(summary["skipped"], 8)
             self.assertEqual(summary["tokens_spent"], 0.0)
             self.assertEqual(summary["stop_reason"], "budget")
-            self.assertEqual(list(tasks.rglob("answer.txt")), [])
+            answers = list(tasks.rglob("answer.txt"))
+            self.assertGreaterEqual(len(answers), 8)
+            self.assertTrue(all(path.read_text(encoding="utf-8") == "" for path in answers))
 
     def test_dry_run_writes_plan_predictions_when_out_is_writable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

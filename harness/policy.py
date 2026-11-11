@@ -69,7 +69,8 @@ from typing import Any, Final, Literal, Protocol, runtime_checkable
 
 from .estimator import CostEstimate
 from .features import DETERMINISTIC_SOLVERS
-from .triage import DEFAULT_THRESHOLD, triage
+from .solveability import check_solveability
+from .triage import DEFAULT_THRESHOLD
 
 __all__ = [
     "ACTION_REASONS",
@@ -673,10 +674,10 @@ def _impossible_tasks(
         if not (hasattr(task, "instruction") and hasattr(task, "workdir")):
             continue
         try:
-            if triage(task, triage_threshold).infeasible:  # type: ignore[arg-type]
+            if check_solveability(task).impossible:  # type: ignore[arg-type]
                 flagged.add(_clean_name(task.task_id))
         except (AttributeError, OSError, ValueError) as exc:  # pragma: no cover - defensive
-            log.warning("triage failed for %s: %s", getattr(task, "task_id", "?"), exc)
+            log.warning("solveability failed for %s: %s", getattr(task, "task_id", "?"), exc)
     return flagged
 
 

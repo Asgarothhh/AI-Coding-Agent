@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"wall-clock limit in seconds, below the 1-hour judge timeout (default: {DEFAULT_TIME_LIMIT:g})",
     )
     parser.add_argument("--triage-threshold", type=float, default=0.6, help="infeasibility threshold in [0,1] (default: 0.6)")
-    parser.add_argument("--max-iterations", type=int, default=6, help="max LLM repair iterations for coding (default: 6)")
+    parser.add_argument("--max-iterations", type=int, default=3, help="max LLM repair iterations for coding (default: 3)")
     parser.add_argument("--mutation-repair", action="store_true", help="enable tiny deterministic mutation repair for coding")
     parser.add_argument("--test-timeout", type=float, default=60.0, help="per-test-file timeout in seconds (default: 60)")
     parser.add_argument("--max-tokens", type=int, default=None, help="maximum completion tokens per LLM call (default: $LLM_MAX_TOKENS or 1024)")

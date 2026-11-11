@@ -1,0 +1,34 @@
+{"split": "official-8-offline", "task_id": "coding_0003", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "official-8-offline", "task_id": "coding_0007", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "official-8-offline", "task_id": "data_analysis_0002", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "sum units over 4/20 rows in sales.csv (product='widget', months=7..8)"}
+{"split": "official-8-offline", "task_id": "data_analysis_0006", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "sum units over 11/300 rows in sales.csv (product='widget', months=5..6)"}
+{"split": "official-8-offline", "task_id": "math_0000", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 5 operation(s)"}
+{"split": "official-8-offline", "task_id": "math_0004", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 2 operation(s)"}
+{"split": "official-8-offline", "task_id": "search_0001", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "person_irina_smith.md: born"}
+{"split": "official-8-offline", "task_id": "search_0005", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "company_fjord_data.md: headquarters via employer='Fjord Data'"}
+{"split": "extended-16-offline", "task_id": "coding_0003", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "extended-16-offline", "task_id": "coding_0007", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "extended-16-offline", "task_id": "coding_0008", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "extended-16-offline", "task_id": "coding_0009", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "extended-16-offline", "task_id": "data_analysis_0002", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "sum units over 4/20 rows in sales.csv (product='widget', months=7..8)"}
+{"split": "extended-16-offline", "task_id": "data_analysis_0006", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "sum units over 11/300 rows in sales.csv (product='widget', months=5..6)"}
+{"split": "extended-16-offline", "task_id": "data_analysis_0007", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "revenue units over 19/600 rows in sales.csv (product='widget', region='west', months=4..9)"}
+{"split": "extended-16-offline", "task_id": "data_analysis_0008", "status": "solved", "solver": "data_analysis", "tokens": 0.0, "usage": null, "notes": "revenue units over 27/800 rows in sales.csv (product='sprocket', region='north', months=2..11)"}
+{"split": "extended-16-offline", "task_id": "math_0000", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 5 operation(s)"}
+{"split": "extended-16-offline", "task_id": "math_0004", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 2 operation(s)"}
+{"split": "extended-16-offline", "task_id": "math_0005", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 7 operation(s)"}
+{"split": "extended-16-offline", "task_id": "math_0006", "status": "solved", "solver": "math", "tokens": 0.0, "usage": null, "notes": "parsed 1 operation(s)"}
+{"split": "extended-16-offline", "task_id": "search_0001", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "person_irina_smith.md: born"}
+{"split": "extended-16-offline", "task_id": "search_0005", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "company_fjord_data.md: headquarters via employer='Fjord Data'"}
+{"split": "extended-16-offline", "task_id": "search_0006", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "company_helix_motors.md: headquarters via mentor='Dmitri Wang', mentor='Alice Smith', employer='Helix Motors'"}
+{"split": "extended-16-offline", "task_id": "search_0007", "status": "solved", "solver": "search", "tokens": 0.0, "usage": null, "notes": "company_granite_ai.md: name via mentor='Chen Petrov', mentor='Alice Smith', employer='Granite AI'"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-argparse-flag", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-docstring-ast", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-empty-list", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-fix-add", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-fix-import", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-rename-func", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-trace-bug", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_py-write-test", "status": "failed", "solver": "coding", "tokens": 0.0, "usage": null, "notes": "tests fail and no LLM is available"}
+{"split": "lorne-10-offline", "task_id": "lorne_read-const", "status": "failed", "solver": "generic", "tokens": 0.0, "usage": null, "notes": "model=unknown; attempts=0; no LLM is available for this task type"}
+{"split": "lorne-10-offline", "task_id": "lorne_read-def", "status": "failed", "solver": "generic", "tokens": 0.0, "usage": null, "notes": "model=unknown; attempts=0; no LLM is available for this task type"}

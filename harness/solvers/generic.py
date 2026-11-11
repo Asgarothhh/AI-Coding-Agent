@@ -277,6 +277,26 @@ def _system_prompt(shape: str) -> str:
     )
 
 
+_REDACTED_RAW_KEYS = frozenset({"expected", "gold", "answer", "reference"})
+
+
+def _raw_block(task: Task) -> str:
+    raw = getattr(task, "raw", None)
+    if not isinstance(raw, dict) or not raw:
+        return "TASK.JSON KEYS: (none)"
+    visible = {
+        key: value
+        for key, value in raw.items()
+        if str(key).lower() not in _REDACTED_RAW_KEYS and key != "instruction"
+    }
+    keys = ", ".join(sorted(str(key) for key in visible)) or "(none)"
+    try:
+        dumped = json.dumps(visible, ensure_ascii=False, default=str)
+    except TypeError:
+        dumped = str(visible)
+    return f"TASK.JSON KEYS: {keys}\nTASK.JSON FIELDS: {_truncate(dumped, 800)}"
+
+
 def _build_user_prompt(task: Task, shape: str, retry: bool = False) -> str:
     instruction = task.instruction.strip() or "(empty instruction)"
     instruction = _truncate(instruction, _INSTRUCTION_LIMIT)
@@ -287,6 +307,8 @@ def _build_user_prompt(task: Task, shape: str, retry: bool = False) -> str:
     prefix_parts = [
         "TASK INSTRUCTION:",
         instruction,
+        "",
+        _raw_block(task),
         "",
         "REQUIRED ANSWER FORMAT:",
         _SHAPE_HINTS[shape],
@@ -362,7 +384,7 @@ def _stringify_json(value: object) -> str | None:
         for key in ("answer", "result", "output", "final_answer", "final"):
             if key in value and value[key] is not None:
                 return _stringify_json(value[key])
-        return None
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if isinstance(value, bool):

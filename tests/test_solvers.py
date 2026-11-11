@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
+from pathlib import Path
 
+from harness.runner import RunOptions, run
 from harness.solvers.base import SolveResult
 from harness.solvers.data_analysis import solve as solve_data_analysis
 from harness.solvers.math import format_number, safe_eval, solve as solve_math
 from harness.solvers.search import solve as solve_search
 from harness.task import load_task, load_tasks
 
-from tests.support import EXAMPLES, ROOT, expected_for, make_context, make_task
+from tests.support import EXAMPLES, ROOT, copy_examples, expected_for, make_context, make_task
+from tests.test_generic_solver import FakeLLM
 
 EXTENDED = ROOT / "examples" / "task-dir-extended"
 
@@ -85,11 +89,94 @@ class DeterministicSolverTests(unittest.TestCase):
             result = solve_math(task, make_context())
             self.assertEqual(result.answer, "14")
 
+    def test_math_has_quantity_without_ops_is_unmatched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "has_only",
+                instruction="A company has 12 offices. Write a summary only.",
+            )
+            result = solve_math(task, make_context())
+            self.assertIsNone(result.answer)
+
     def test_math_returns_none_when_unparseable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task = make_task(tmp, "unknown", instruction="Write a poem about boxes.")
             result = solve_math(task, make_context())
             self.assertIsNone(result.answer)
+            self.assertEqual(result.tokens, 0.0)
+
+    def test_official_non_coding_make_zero_llm_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = copy_examples(Path(tmp) / "tasks")
+            for task_dir in list(root.iterdir()):
+                if task_dir.name.startswith("coding_"):
+                    shutil.rmtree(task_dir)
+            fake = FakeLLM(["SHOULD_NOT_BE_USED"])
+            summary = run(
+                RunOptions(
+                    tasks_dir=root,
+                    out=Path(tmp) / "out",
+                    llm=fake,
+                    max_workers=1,
+                    time_limit=60,
+                    budget=100_000,
+                )
+            )
+            self.assertEqual(summary["solved"], 6)
+            self.assertEqual(fake.calls, 0)
+            self.assertEqual(summary["tokens_spent"], 0.0)
+
+    def test_unparseable_math_falls_back_to_generic_when_llm_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tasks"
+            make_task(
+                root,
+                "unknown",
+                instruction="Write a poem about 12 boxes. Reply with the title only.",
+                check="exact_str",
+            )
+            fake = FakeLLM(["SONNET"])
+            summary = run(
+                RunOptions(
+                    tasks_dir=root,
+                    out=Path(tmp) / "out",
+                    llm=fake,
+                    max_workers=1,
+                    time_limit=60,
+                    budget=100_000,
+                )
+            )
+            self.assertEqual(summary["solved"], 1)
+            self.assertEqual(fake.calls, 1)
+            self.assertEqual(summary["results"][0]["solver"], "generic")
+            self.assertEqual(
+                (root / "unknown" / "answer.txt").read_text(encoding="utf-8").strip(),
+                "SONNET",
+            )
+
+    def test_unparseable_math_stays_failed_offline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tasks"
+            make_task(
+                root,
+                "unknown",
+                instruction="Write a poem about 12 boxes. Reply with the title only.",
+                check="exact_str",
+            )
+            summary = run(
+                RunOptions(
+                    tasks_dir=root,
+                    out=Path(tmp) / "out",
+                    offline=True,
+                    max_workers=1,
+                    time_limit=60,
+                    budget=100_000,
+                )
+            )
+            self.assertEqual(summary["solved"], 0)
+            self.assertEqual(summary["failed"], 1)
+            self.assertEqual(summary["tokens_spent"], 0.0)
 
     def test_safe_eval(self) -> None:
         self.assertEqual(safe_eval("2 + 3 * 4"), 14)

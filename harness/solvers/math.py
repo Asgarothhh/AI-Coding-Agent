@@ -215,8 +215,13 @@ def solve(task: Task, ctx: SolverContext) -> SolveResult:  # noqa: ARG001 - unif
     if initial is not None:
         value: int | float = _int(initial.group(1))
         ops = _extract_ops(instruction)
-        if ops is None:  # pragma: no cover - initial was just found
-            return SolveResult(None, 0.0, "math", "could not parse arithmetic operations")
+        if not ops:
+            return SolveResult(
+                None,
+                0.0,
+                "math",
+                "initial quantity found but no arithmetic operations",
+            )
         for _start, operation in ops:
             value = operation(value)
         return SolveResult(format_number(value), 0.0, "math", f"parsed {len(ops)} operation(s)")

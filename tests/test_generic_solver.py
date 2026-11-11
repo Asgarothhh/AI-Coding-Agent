@@ -5,11 +5,14 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+import json
+
 from harness.budget import Budget, BudgetExhausted
 from harness.llm import LLMConfig, LLMError, LLMResponse, LLMUsage
 from harness.runner import RunOptions, run
 from harness.solvers.generic import _CONTEXT_CHAR_CAP
 from harness.solvers.generic import solve as solve_generic
+from harness.task import load_task
 from tests.support import make_context, make_task
 
 
@@ -245,6 +248,56 @@ class GenericSolverTests(unittest.TestCase):
             self.assertEqual(fake.calls, 1)
             self.assertEqual(result.solver, "generic")
             self.assertTrue(result.notes.startswith("budget stop:"), result.notes)
+
+    def test_prompt_includes_raw_task_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "rawkeys",
+                task_type="mystery",
+                instruction="Return the extra field value.",
+                check="exact_str",
+            )
+            payload = json.loads((task.task_dir / "task.json").read_text(encoding="utf-8"))
+            payload["author"] = "organizers"
+            payload["expected"] = "ORACLE-GOLD-VALUE"
+            (task.task_dir / "task.json").write_text(json.dumps(payload), encoding="utf-8")
+            task = load_task(task.task_dir)
+            fake = FakeLLM(["organizers"])
+            result = solve_generic(task, make_context(llm=fake))
+            self.assertEqual(result.answer, "organizers")
+            prompt = _user_prompt(fake)
+            self.assertIn("TASK.JSON KEYS:", prompt)
+            self.assertIn("author", prompt)
+            self.assertNotIn("expected", prompt.lower())
+            self.assertNotIn("ORACLE-GOLD-VALUE", prompt)
+
+    def test_json_object_in_fence_is_not_truncated_to_brace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "json_obj",
+                task_type="mystery",
+                instruction="Return the JSON object with keys foo and bar.",
+                check="exact_str",
+            )
+            reply = '```json\n{"foo": 1, "bar": 2}\n```'
+            result = solve_generic(task, make_context(llm=FakeLLM([reply])))
+            self.assertEqual(result.answer, '{"foo":1,"bar":2}', result.notes)
+
+    def test_empty_reply_after_retry_is_not_solved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "empty",
+                task_type="mystery",
+                instruction="Say the codeword.",
+                check="exact_str",
+            )
+            fake = FakeLLM(["", "   "])
+            result = solve_generic(task, make_context(llm=fake))
+            self.assertIsNone(result.answer)
+            self.assertEqual(fake.calls, 2)
 
     def test_prompt_has_instruction_inventory_and_stays_under_cap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

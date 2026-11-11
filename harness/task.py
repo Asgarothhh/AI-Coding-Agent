@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +27,10 @@ class Task:
     ``workspace`` is the directory the instruction calls "the current
     directory".  Some tasks may not ship a workspace at all; in that case the
     task directory itself is used.
+
+    ``raw`` is the full decoded ``task.json`` object, including unknown keys
+    and ``expected``.  Production solvers must not treat ``expected`` as an
+    answer.
     """
 
     task_id: str
@@ -34,6 +40,7 @@ class Task:
     check: str
     task_dir: Path
     workspace: Path | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
     @property
     def workdir(self) -> Path:
@@ -62,11 +69,47 @@ class Task:
         return tuple(locations)
 
 
+def resolve_task_path(task_dir: str | Path, candidate: str | Path) -> Path:
+    """Resolve ``candidate`` so it stays inside ``task_dir``.
+
+    Rejects absolute paths, ``..`` traversal, and symlink escape.  The
+    returned path is the resolved real path of an existing or not-yet-created
+    location whose parent chain remains inside the task directory.
+    """
+
+    root = Path(task_dir).resolve()
+    raw = Path(candidate)
+    if raw.is_absolute():
+        raise ValueError(f"absolute path outside task directory: {candidate}")
+    parts = raw.parts
+    if any(part == ".." for part in parts):
+        raise ValueError(f"path traversal is not allowed: {candidate}")
+    target = (root / raw).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"path escapes task directory: {candidate}") from exc
+    return target
+
+
+def _safe_workspace(task_dir: Path) -> Path | None:
+    workspace_path = task_dir / "workspace"
+    if not workspace_path.is_dir():
+        return None
+    try:
+        resolve_task_path(task_dir, "workspace")
+    except ValueError:
+        log.warning("ignoring workspace that escapes task directory %s", task_dir)
+        return None
+    return workspace_path
+
+
 def load_task(task_dir: str | Path) -> Task:
     """Load one task directory.
 
     The JSON file is decoded with ``utf-8-sig`` so a byte-order mark does not
-    break loading.  Unknown fields (including ``expected``) are ignored.
+    break loading.  Unknown fields are kept in ``Task.raw``.  Production code
+    still does not use ``expected`` as an answer.
     """
 
     path = Path(task_dir)
@@ -86,14 +129,15 @@ def load_task(task_dir: str | Path) -> Task:
     task_id = str(data["task_id"]).strip() or path.name
     task_type = str(data["task_type"]).strip().lower()
     instruction = str(data["instruction"])
-    try:
-        reward = float(data["reward"])
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{task_json}: reward must be numeric") from exc
+    raw_reward = data["reward"]
+    if isinstance(raw_reward, bool) or not isinstance(raw_reward, (int, float)):
+        raise ValueError(f"{task_json}: reward must be numeric")
+    reward = float(raw_reward)
+    if not math.isfinite(reward):
+        raise ValueError(f"{task_json}: reward must be finite")
     check = str(data["check"]).strip().lower()
 
-    workspace_path = path / "workspace"
-    workspace = workspace_path if workspace_path.is_dir() else None
+    workspace = _safe_workspace(path)
 
     return Task(
         task_id=task_id,
@@ -103,6 +147,7 @@ def load_task(task_dir: str | Path) -> Task:
         check=check,
         task_dir=path,
         workspace=workspace,
+        raw=dict(data),
     )
 
 
@@ -143,4 +188,4 @@ def load_tasks(tasks_dir: str | Path) -> list[Task]:
     return tasks
 
 
-__all__ = ["KNOWN_TASK_TYPES", "Task", "load_task", "load_tasks"]
+__all__ = ["KNOWN_TASK_TYPES", "Task", "load_task", "load_tasks", "resolve_task_path"]

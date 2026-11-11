@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from harness.llm import LLMResponse, LLMUsage
 from harness.solvers.coding import (
@@ -28,9 +30,11 @@ class FakeLLM:
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
         self.calls = 0
+        self.messages: list = []
 
     def chat(self, messages, **kwargs):  # noqa: ANN001, ARG002
         self.calls += 1
+        self.messages.append(messages)
         return LLMResponse(
             text=self.text,
             model="fake",
@@ -261,7 +265,7 @@ class CodingSolverTests(unittest.TestCase):
             )
 
             self.assertIsNone(result.answer)
-            self.assertEqual(result.notes, "LLM did not return a usable full-file patch")
+            self.assertEqual(result.notes, "LLM did not return a usable patch")
             self.assertEqual((task.workdir / "alpha.py").read_bytes(), alpha_before)
             self.assertEqual((task.workdir / "beta.py").read_bytes(), beta_before)
             self.assertEqual((task.workdir / "test_both.py").read_bytes(), test_before)
@@ -280,7 +284,7 @@ class CodingSolverTests(unittest.TestCase):
             )
 
             self.assertIsNone(result.answer)
-            self.assertEqual(result.notes, "LLM did not return a usable full-file patch")
+            self.assertEqual(result.notes, "LLM did not return a usable patch")
             self.assertEqual((task.workdir / "mylib.py").read_bytes(), source_before)
             self.assertEqual((task.workdir / "test_mylib.py").read_bytes(), test_before)
 
@@ -309,6 +313,65 @@ class CodingSolverTests(unittest.TestCase):
                 (task.workdir / "mylib.py").read_text(encoding="utf-8"),
                 _FIXED_SOURCE,
             )
+
+    def test_max_iterations_three_does_not_make_fourth_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = _single_source_task(Path(tmp), "cap3")
+            test_before = _hash(task.workdir / "test_mylib.py")
+            fake = FakeLLM("not a patch at all")
+            result = solve_coding(task, make_context(llm=fake))
+            self.assertIsNone(result.answer)
+            self.assertEqual(fake.calls, 3)
+            self.assertEqual(_hash(task.workdir / "test_mylib.py"), test_before)
+
+    def test_search_replace_hunk_is_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = _single_source_task(Path(tmp), "sr")
+            reply = (
+                "mylib.py\n"
+                "<<<<<<< SEARCH\n"
+                "    return a - b\n"
+                "=======\n"
+                "    return a + b\n"
+                ">>>>>>> REPLACE\n"
+            )
+            fake = FakeLLM(reply)
+            result = solve_coding(task, make_context(llm=fake, max_iterations=2))
+            self.assertEqual(result.answer, "DONE", result.notes)
+            self.assertIn("a + b", (task.workdir / "mylib.py").read_text(encoding="utf-8"))
+            self.assertEqual(fake.calls, 1)
+
+    def test_prompt_uses_first_diagnostic_not_full_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = _single_source_task(Path(tmp), "diag")
+            fake = FakeLLM("not a patch")
+            solve_coding(task, make_context(llm=fake, max_iterations=1))
+            self.assertEqual(fake.calls, 1)
+            user = fake.messages[0][1]["content"]
+            self.assertIn("First diagnostic error:", user)
+            self.assertIn("AssertionError", user)
+            self.assertNotIn("Current test output (tail):", user)
+
+    def test_hanging_test_is_timed_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task = make_task(
+                tmp,
+                "hang",
+                task_type="coding",
+                instruction="Fix hang.py so tests finish.",
+                files={
+                    "hang.py": "VALUE = 1\n",
+                    "test_hang.py": "import time\ntime.sleep(30)\n",
+                },
+                check="unittest",
+            )
+            with mock.patch(
+                "harness.solvers.coding.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["python"], timeout=1),
+            ):
+                run = _run_tests(task.workdir, timeout=1.0)
+            self.assertFalse(run.passed)
+            self.assertIn("TIMEOUT", run.output)
 
 
 if __name__ == "__main__":
