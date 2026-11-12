@@ -1,0 +1,12 @@
+{
+  "scenario": "B8",
+  "snapshot": {
+    "completion_tokens": 5,
+    "prompt_tokens": 0,
+    "remaining": 95.0,
+    "reserved": 0.0,
+    "spent": 5.0,
+    "stopped": false,
+    "total": 100.0
+  }
+}

@@ -1,0 +1,706 @@
+{
+  "synthetic": true,
+  "seed": 2026,
+  "tasks": [
+    {
+      "task_id": "syn_000",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "8"
+    },
+    {
+      "task_id": "syn_001",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_002",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_003",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_004",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_005",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_006",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_007",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_008",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_009",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_010",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_011",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_012",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "18"
+    },
+    {
+      "task_id": "syn_013",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_014",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_015",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_016",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_017",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_018",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_019",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_020",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_021",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_022",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_023",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_024",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "6"
+    },
+    {
+      "task_id": "syn_025",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_026",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_027",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_028",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_029",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_030",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_031",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_032",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_033",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_034",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_035",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_036",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "16"
+    },
+    {
+      "task_id": "syn_037",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_038",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_039",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_040",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_041",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_042",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_043",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_044",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_045",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_046",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_047",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_048",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "17"
+    },
+    {
+      "task_id": "syn_049",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_050",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_051",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_052",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_053",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_054",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_055",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_056",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_057",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_058",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_059",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_060",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "12"
+    },
+    {
+      "task_id": "syn_061",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_062",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_063",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_064",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_065",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_066",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_067",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_068",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_069",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_070",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_071",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_072",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "3"
+    },
+    {
+      "task_id": "syn_073",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_074",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_075",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_076",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_077",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_078",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_079",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_080",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_081",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_082",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_083",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_084",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_085",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_086",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_087",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    },
+    {
+      "task_id": "syn_088",
+      "synthetic": true,
+      "bucket": 4,
+      "kind": "invalid_json",
+      "expected": null
+    },
+    {
+      "task_id": "syn_089",
+      "synthetic": true,
+      "bucket": 5,
+      "kind": "impossible_empty_kb",
+      "expected": null
+    },
+    {
+      "task_id": "syn_090",
+      "synthetic": true,
+      "bucket": 6,
+      "kind": "uncertain_unknown",
+      "expected": "SONNET"
+    },
+    {
+      "task_id": "syn_091",
+      "synthetic": true,
+      "bucket": 7,
+      "kind": "coding_repair",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_092",
+      "synthetic": true,
+      "bucket": 8,
+      "kind": "rerun_existing",
+      "expected": "7"
+    },
+    {
+      "task_id": "syn_093",
+      "synthetic": true,
+      "bucket": 9,
+      "kind": "generic_plain",
+      "expected": "GENERIC"
+    },
+    {
+      "task_id": "syn_094",
+      "synthetic": true,
+      "bucket": 10,
+      "kind": "impossible_network",
+      "expected": null
+    },
+    {
+      "task_id": "syn_095",
+      "synthetic": true,
+      "bucket": 11,
+      "kind": "llm_connection_error",
+      "expected": null
+    },
+    {
+      "task_id": "syn_096",
+      "synthetic": true,
+      "bucket": 0,
+      "kind": "deterministic_math",
+      "expected": "10"
+    },
+    {
+      "task_id": "syn_097",
+      "synthetic": true,
+      "bucket": 1,
+      "kind": "coding_pass",
+      "expected": "DONE"
+    },
+    {
+      "task_id": "syn_098",
+      "synthetic": true,
+      "bucket": 2,
+      "kind": "coding_fail",
+      "expected": null
+    },
+    {
+      "task_id": "syn_099",
+      "synthetic": true,
+      "bucket": 3,
+      "kind": "generic_unknown",
+      "expected": "ORCHID"
+    }
+  ]
+}

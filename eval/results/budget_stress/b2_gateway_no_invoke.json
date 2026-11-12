@@ -1,0 +1,14 @@
+{
+  "invoke_calls": 0,
+  "models_constructed": 1,
+  "scenario": "B2",
+  "snapshot": {
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "remaining": 1.0,
+    "reserved": 0.0,
+    "spent": 0.0,
+    "stopped": false,
+    "total": 1.0
+  }
+}

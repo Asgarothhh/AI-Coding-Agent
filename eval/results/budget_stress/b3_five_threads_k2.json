@@ -1,0 +1,16 @@
+{
+  "exhausted": 3,
+  "granted": 2,
+  "left_reserved": true,
+  "scenario": "B3",
+  "snapshot": {
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "remaining": 0.0,
+    "reserved": 20.0,
+    "spent": 0.0,
+    "stopped": false,
+    "total": 20.0
+  },
+  "sync": "threading.Barrier"
+}

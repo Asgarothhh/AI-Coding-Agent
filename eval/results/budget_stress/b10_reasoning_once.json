@@ -1,0 +1,14 @@
+{
+  "charged": 101.0,
+  "double_count_would_be": 141.0,
+  "scenario": "B10",
+  "snapshot": {
+    "completion_tokens": 100,
+    "prompt_tokens": 10,
+    "remaining": 899.0,
+    "reserved": 0.0,
+    "spent": 101.0,
+    "stopped": false,
+    "total": 1000.0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "charged": 50.0,
+  "invariant_event": null,
+  "scenario": "B11",
+  "snapshot": {
+    "completion_tokens": 50,
+    "prompt_tokens": 0,
+    "remaining": -30.0,
+    "reserved": 0.0,
+    "spent": 50.0,
+    "stopped": true,
+    "total": 20.0
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "production_class": "harness.budget.BudgetLedger",
+  "scenario": "B1",
+  "snapshot": {
+    "completion_tokens": 10,
+    "prompt_tokens": 0,
+    "remaining": 0.0,
+    "reserved": 0.0,
+    "spent": 10.0,
+    "stopped": true,
+    "total": 10.0
+  }
+}

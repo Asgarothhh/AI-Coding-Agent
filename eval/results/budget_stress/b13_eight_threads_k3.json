@@ -1,0 +1,18 @@
+{
+  "exhausted": 5,
+  "granted": 3,
+  "production_max_parallel_sessions": 5,
+  "runner_cap_raised": false,
+  "scenario": "B13",
+  "snapshot": {
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "remaining": 0.0,
+    "reserved": 3.0,
+    "spent": 0.0,
+    "stopped": false,
+    "total": 3.0
+  },
+  "sync": "threading.Barrier",
+  "workers": 8
+}

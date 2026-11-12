@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "seed": 2026,
+  "tasks_requested": 100,
+  "generated": 100,
+  "loaded": 92,
+  "invalid_ids": [
+    "syn_004",
+    "syn_016",
+    "syn_028",
+    "syn_040",
+    "syn_052",
+    "syn_064",
+    "syn_076",
+    "syn_088"
+  ],
+  "by_status": {
+    "solved": 59,
+    "failed": 17,
+    "skipped": 16,
+    "invalid": 8
+  },
+  "solved": 59,
+  "failed": 17,
+  "skipped": 16,
+  "error": 0,
+  "invalid": 8,
+  "score": 76.0,
+  "checked_score": 76.0,
+  "tokens_spent": 360.0,
+  "fake_llm_calls": 68,
+  "budget": {
+    "total": 100000.0,
+    "spent": 360.0,
+    "reserved": 0.0,
+    "remaining": 99640.0,
+    "prompt_tokens": 600,
+    "completion_tokens": 300,
+    "stopped": false
+  },
+  "workers": 5,
+  "complete": true,
+  "problems": [],
+  "errors": [],
+  "tree_hash": "8ab72ae4512d0353176aa4e6e086e96c25717729342e5ef459d74dcc4d8c9748"
+}

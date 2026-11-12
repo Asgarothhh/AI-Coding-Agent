@@ -8,6 +8,8 @@
 **Seed (synthetic):** `2026`  
 **Live LLM:** not run in this apply.
 
+> **Historical apply block** below is HEAD `8cbe25f9b90d266458c75eaa8f4b19950e7b9572` (verification baseline). Current tree is HEAD `fe2ec9e053acf54ca68b00f151ec4af926c0778c` plus **uncommitted** R3 hardening (not committed). New measured numbers: `eval/results/r3_hardening_regression.md`. R3-04 and R3-07 remain **PARTIAL**. Live LLM still not run.
+
 Hashes of untouched fixtures (after runs on **copies**):
 
 | Tree | sha256 of files |
@@ -104,3 +106,66 @@ Fuzzy unique match (ratio ≥ 0.92, uniqueness gap) is implemented; AST-based ma
 ## Matrix
 
 See `eval/results/dev3_progress.md`. Change not archived.
+
+---
+
+## R3 hardening (2026-11-12) — additional measured run
+
+**HEAD:** `fe2ec9e053acf54ca68b00f151ec4af926c0778c` plus uncommitted hardening (**not committed**).  
+**Python:** `/home/asgaroth/miniconda3/envs/coding-agent/bin/python3.11` (`Python 3.11.16`)  
+**OpenSpec:** `1.17.0` — `openspec validate implement-r3-solvers-and-eval --strict` → valid; `openspec list --archived` → none.  
+**Live LLM:** still not run. Slice C **BLOCKED** (`eval/results/openjiuwen_gateway_live_smoke.md`).  
+**R3-04:** PARTIAL. **R3-07:** PARTIAL. The historical numbers and matrix above are a baseline; they were not deleted.
+
+Run ID: `r3hard-D-2026-11-12T0034Z`. Full table: `eval/results/r3_hardening_regression.md`.
+
+### Commands (hardening D, exit codes)
+
+| Command | Exit | Result |
+|---|---|---|
+| `$PY -m unittest discover -s tests -q` | 0 | Ran 392, OK, skipped=2, 10.289s |
+| `$PY -m unittest discover -s tests/contract -q` | 0 | Ran 47, OK, 4.839s |
+| `$PY -m unittest tests.test_fake_100 tests.contract.test_budget_exhaustion tests.contract.test_budget_concurrency tests.test_generic_solver -q` | 0 | Ran 34, OK, 0.058s |
+| `$PY run_agent.py --tasks-dir /tmp/r3hard-task-dir --offline --max-workers 1 --out /tmp/r3hard-out8` | 0 | 6/8 score 16.0 tokens 0.0 |
+| `$PY run_agent.py --tasks-dir /tmp/r3hard-task-dir-extended --offline --max-workers 1 --out /tmp/r3hard-out16` | 0 | 12/16 score 42.0 tokens 0.0 |
+| `$PY run_agent.py --tasks-dir /tmp/r3hard-lorne --offline --max-workers 1 --out /tmp/r3hard-out-lorne` | 0 | 0/10 score 0.0 (expected without LLM) |
+| `openspec validate implement-r3-solvers-and-eval --strict` | 0 | valid, not archived |
+
+Logs (new names; historical `dev3_offline*.log` / `dev3_official8.json` / `fake_100.json` not overwritten): `eval/results/r3_hard_offline8.log`, `r3_hard_offline16.log`, `r3_hard_lorne.log`, `r3_hard_unit.log`, `r3_hard_contract.log`, `r3_hard_targeted.log`, `r3_hard_openspec.log`.
+
+This-run fixture TREE_HASH (sorted sha256 listing; before==after):
+
+| Tree | files | TREE_HASH |
+|---|---:|---|
+| `examples/task-dir` | 88 | `7ccb9a4c5caf998de60f985902fd11abbd0eafe011ec5e015f9f12554ae49e1f` |
+| `examples/task-dir-extended` | 195 | `78ed850e5157a1af0d6a5e390ed93006ea93c44e671a9a22df486aaf5b93d634` |
+| `eval/external/lorne` | 41 | `02edb31ce908b283e091638ce347a5e2f5a81f8f0b52678417bde3f319d95ccc` |
+
+The hashes at the top of this file are the **historical** apply hashes (different method). Both sets describe untouched originals; D proved before==after with the method in `r3_hardening_regression.md`.
+
+### R3-08 (100/100 accounting)
+
+Historical synthetic section above is the 92-loaded writer (`fake_100.json`: solved=59 failed=17 skipped=16 score=76, `tasks=100`). After slice A the report layer accounts all 100 IDs: 8 invalid JSON (`syn_004/016/028/040/052/064/076/088`) + 92 loaded. Cited, not re-run: `eval/results/fake_100_reconciliation.md` and `fake_100_run{1,2,3,w1}/`.
+
+### Status matrix (hardening)
+
+| Block | Status | Proof |
+|---|---|---|
+| A 100 IDs | DONE | jsonl 100/100, eight invalid named |
+| B Budget | DONE (D1 defects remain) | consumer tests + defect report |
+| C Live Gateway | BLOCKED | creds unset |
+| D Regression | DONE | this run, no baseline miss |
+| Reviewer A/B | PASS-with-notes | LOW/MEDIUM dump fixed |
+| OpenSpec | applied, valid, not archived | |
+| R3-04 | PARTIAL | no AST/fuzzy |
+| R3-07 | PARTIAL | no fresh live Lorne |
+
+### Links
+
+- `eval/results/r3_hardening_initial_state.md`
+- `eval/results/fake_100_reconciliation.md`
+- `eval/results/budget_stress_report.md`
+- `eval/results/d1_budget_defects.md`
+- `eval/results/openjiuwen_gateway_live_smoke.md`
+- `eval/results/r3_hardening_regression.md`
+- `eval/results/r3_hardening_final_review.md` (PASS-with-notes; no CRITICAL/HIGH)

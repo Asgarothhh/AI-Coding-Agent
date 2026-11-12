@@ -1,0 +1,15 @@
+{
+  "exhausted": 3,
+  "granted": 2,
+  "scenario": "B4",
+  "snapshot": {
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "remaining": 1.0,
+    "reserved": 4.0,
+    "spent": 0.0,
+    "stopped": false,
+    "total": 5.0
+  },
+  "sync": "threading.Barrier"
+}

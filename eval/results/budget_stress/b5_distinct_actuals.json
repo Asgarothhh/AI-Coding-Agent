@@ -1,0 +1,16 @@
+{
+  "costs": [
+    4.0,
+    9.0
+  ],
+  "scenario": "B5",
+  "snapshot": {
+    "completion_tokens": 11,
+    "prompt_tokens": 20,
+    "remaining": 87.0,
+    "reserved": 0.0,
+    "spent": 13.0,
+    "stopped": false,
+    "total": 100.0
+  }
+}

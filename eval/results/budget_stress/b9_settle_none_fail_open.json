@@ -1,0 +1,17 @@
+{
+  "negative_duck": "ValueError from TokenUsage",
+  "negative_mapping_charged": 0.0,
+  "scenario": "B9",
+  "settle_none_charged": 0.0,
+  "snapshot": {
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "remaining": 100.0,
+    "reserved": 0.0,
+    "spent": 0.0,
+    "stopped": false,
+    "total": 100.0
+  },
+  "unsupported_object": "BudgetError",
+  "v5_fail_closed": false
+}

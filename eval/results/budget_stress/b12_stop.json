@@ -1,0 +1,13 @@
+{
+  "scenario": "B12",
+  "snapshot": {
+    "completion_tokens": 10,
+    "prompt_tokens": 0,
+    "remaining": 90.0,
+    "reserved": 0.0,
+    "spent": 10.0,
+    "stopped": true,
+    "total": 100.0
+  },
+  "spent_before_stop": 10.0
+}
