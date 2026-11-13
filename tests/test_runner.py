@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from harness.llm import LLMClient, LLMConfig
+from harness.llm import DEFAULT_MODEL, LLMClient, LLMConfig
 from harness.mock_proxy import MockProxyServer
 from harness.runner import RunOptions, run
 from tests.support import copy_examples, expected_for
@@ -250,7 +250,7 @@ class RunnerTests(unittest.TestCase):
                 ):
                     self.assertIn(key, record)
                 task_ids.add(record["task_id"])
-                self.assertEqual(record["model"], "qwen3.6-35b-a3b-noreason")
+                self.assertEqual(record["model"], DEFAULT_MODEL)
             self.assertEqual(task_ids, {item["task_id"] for item in summary["plan"]})
 
     def test_predictions_are_written_once_per_task_and_trace_has_audit_fields(self) -> None:
@@ -299,7 +299,7 @@ class RunnerTests(unittest.TestCase):
                     self.assertIn("y_actual", record)
                     self.assertIn("theory", record)
                     self.assertIn("estimator_confidence", record)
-                    self.assertEqual(record["model"], "qwen3.6-35b-a3b-noreason")
+                    self.assertEqual(record["model"], DEFAULT_MODEL)
                     if task_id in DETERMINISTIC:
                         self.assertEqual(record["theory"], "deterministic")
                         self.assertEqual(record["estimator_confidence"], "high")

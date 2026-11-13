@@ -7,13 +7,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from harness.llm import DEFAULT_MODEL
 from harness.model_router import (
     ALLOWED_MODELS,
     DEFAULT_STATS_PATH,
     ModelSelection,
     select_model,
 )
+from run_agent import _effective_model_policy, build_parser
 
+# Measured winner in the shipped stats file.  It is intentionally not the
+# module default: the official CLI defaults to the base alias and fixed policy.
 DEFAULT = "qwen3.6-35b-a3b-noreason"
 
 
@@ -182,6 +186,43 @@ class ModelRouterTests(unittest.TestCase):
                 ),
             )
             self.assertEqual(same_ratio.model, DEFAULT)
+
+
+class DefaultModelCliTests(unittest.TestCase):
+    def test_module_default_is_safe_base_alias(self) -> None:
+        self.assertEqual(DEFAULT_MODEL, "qwen3.6-35b-a3b")
+        selection = select_model(
+            DEFAULT_MODEL, policy="fixed", stats_path=DEFAULT_STATS_PATH
+        )
+        self.assertEqual(selection.model, "qwen3.6-35b-a3b")
+        self.assertEqual(selection.policy, "fixed")
+        self.assertEqual(dict(selection.stats), {})
+
+    def test_metrics_policy_is_unchanged_for_internal_experiments(self) -> None:
+        selection = select_model(
+            DEFAULT_MODEL, policy="metrics", stats_path=DEFAULT_STATS_PATH
+        )
+        self.assertEqual(selection.model, DEFAULT)
+        self.assertEqual(selection.policy, "metrics")
+
+    def test_parser_defaults_to_gateway_and_fixed(self) -> None:
+        args = build_parser().parse_args(["--tasks-dir", "tasks"])
+        self.assertEqual(args.llm_backend, "gateway")
+        self.assertEqual(args.model_policy, "fixed")
+
+    def test_explicit_model_or_env_forces_fixed_policy(self) -> None:
+        self.assertEqual(
+            "fixed", _effective_model_policy(None, "qwen3.6-35b-a3b", "metrics")
+        )
+        self.assertEqual(
+            "fixed", _effective_model_policy("qwen3.8-27b", None, "metrics")
+        )
+        self.assertEqual(
+            "fixed", _effective_model_policy("qwen3.8-27b", "env", "metrics")
+        )
+        self.assertEqual("metrics", _effective_model_policy(None, None, "metrics"))
+        self.assertEqual("fixed", _effective_model_policy(None, None, "fixed"))
+        self.assertEqual("metrics", _effective_model_policy(None, "", "metrics"))
 
 
 if __name__ == "__main__":

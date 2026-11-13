@@ -37,7 +37,7 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "qwen3.6-35b-a3b-noreason"
+DEFAULT_MODEL = "qwen3.6-35b-a3b"
 ESCALATION_MODEL = "qwen3.8-27b"
 
 _RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})

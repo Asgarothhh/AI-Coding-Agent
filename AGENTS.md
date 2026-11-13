@@ -9,9 +9,17 @@ openJiuwen Challenge 2026: batch-агент `Stevenson 1.0`, который ре
 
 Обязательный артефакт каждой задачи — `<TASKS>/<task_id>/answer.txt`. Пустой файл
 не считается решением. Стек: Python 3.11, stdlib-only ядро,
-`openjiuwen==0.1.20.post1` (openJiuwen Core SDK), 4 CPU, 16 ГБ RAM, контейнер не
-более 1 часа, образ менее 4 ГБ, read-only rootfs, `HOME=/tmp`, сеть только до
-LLM-прокси. Точка входа: `python run_agent.py --tasks-dir /data/tasks`.
+`openjiuwen==0.1.20.post1` (openJiuwen Core SDK), 8 логических ядер разрешено
+(локальные тесты — 4 CPU консервативно), 16 ГБ RAM, контейнер не более 1 часа,
+образ менее 4 ГБ, read-only rootfs, `HOME=/tmp`, сеть только до LLM-прокси.
+GPU и локальные нейросетевые модели запрещены; CPU-энкодеры/токенизаторы
+допустимы. Runtime downloads запрещены. Точка входа:
+`python run_agent.py --tasks-dir /data/tasks`.
+
+Официальный прогон: `--llm-backend gateway` (default), `--model-policy fixed`,
+модель по умолчанию — базовый алиас `qwen3.6-35b-a3b`; явный
+`LLM_MODEL`/`--model` приоритетен. `metrics` — только внутренние эксперименты.
+Бюджет официально передаётся в `BUDGET` (может отличаться от 100k).
 
 Формула стоимости: `output_tokens + input_tokens / 10`; reasoning входит в выходной
 расход и не должен учитываться дважды.
@@ -75,9 +83,11 @@ npx --yes @fission-ai/openspec@1.17.0 validate add-token-estimator --strict
 git grep -nE 'oc_sk_|BEGIN OPENSSH|API_KEY=|sk-[A-Za-z0-9]{20,}' -- ':!tests' ':!*.md'
 ```
 
-Офлайн-прогон на `examples/task-dir` должен давать 8/8 и score 20; расширенный набор
-— 16 задач без регрессии. Совпадения secret grep разбираются, а не игнорируются.
-`openspec validate --strict` обязателен для каждого изменения.
+Офлайн-прогон на `examples/task-dir` **без** `--mutation-repair` даёт 6/8 и score 16;
+8/8 и score 20 — только с `--mutation-repair`. Расширенный набор с
+`--mutation-repair` — 14/16 (два coding-провала), без регрессии. Совпадения
+secret grep разбираются, а не игнорируются. `openspec validate --strict`
+обязателен для каждого изменения.
 
 ## Определение готовности
 
@@ -93,7 +103,7 @@ git grep -nE 'oc_sk_|BEGIN OPENSSH|API_KEY=|sk-[A-Za-z0-9]{20,}' -- ':!tests' ':
 
 - Сломаны базовые тесты или offline baseline — сначала зелёный baseline, потом работа.
 - Три неудачные попытки подряд — откат к последнему зелёному состоянию, статус `blocked`.
-- Наступило 12.11.2026 18:00 MSK — заморозка: только фиксы, ломающие приёмку.
+- Наступило 12.11.2026 18:00 MSK — внутренняя заморозка: только фиксы, ломающие приёмку. Официальный дедлайн — 13.11.2026 23:59 MSK, ссылка на репозиторий отправляется на `openjiuwen_org@nsu.ru`; репозиторий может быть публичным или приватным.
 - Секрет попал в дифф — стоп, отзыв ключа, очистка истории до пуша.
 - Нарушен бюджетный инвариант или обнаружен перерасход — стоп и разбор ledger.
 

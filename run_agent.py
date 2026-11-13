@@ -48,6 +48,23 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _effective_model_policy(
+    model: str | None,
+    env_model: str | None,
+    requested_policy: str,
+) -> str:
+    """Return the model policy actually used by the CLI.
+
+    An explicit model (``--model`` or ``$LLM_MODEL``) always pins the choice:
+    the judge may fix ``LLM_MODEL``, so measured stats must never override it.
+    Otherwise the caller-supplied policy is honoured (``fixed`` by default).
+    """
+
+    if model or env_model:
+        return "fixed"
+    return requested_policy
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="run_agent.py",
@@ -102,29 +119,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--llm-backend",
         choices=("auto", "stdlib", "openjiuwen", "gateway"),
-        default="auto",
+        default="gateway",
         help=(
-            "LLM transport backend: auto (default), stdlib urllib, openjiuwen, "
-            "or gateway (the v5 production path through openJiuwen Core; "
-            "never falls back to stdlib)"
+            "LLM transport backend: gateway (default; production path through "
+            "openJiuwen Core, never falls back to stdlib), auto, stdlib "
+            "urllib, or openjiuwen"
         ),
     )
     parser.add_argument(
         "--model",
         default=None,
         help=(
-            "default/fallback model (default: $LLM_MODEL or "
-            f"{DEFAULT_MODEL}); with --model-policy metrics the measured "
-            "stats file may select another allowlisted model"
+            "fixed model (default: $LLM_MODEL or "
+            f"{DEFAULT_MODEL}); an explicit model always pins "
+            "--model-policy fixed, so stats cannot override it. "
+            "The metrics policy is only for internal experiments"
         ),
     )
     parser.add_argument(
         "--model-policy",
         choices=("fixed", "metrics"),
-        default="metrics",
+        default="fixed",
         help=(
-            "model selection policy: metrics (default; best measured "
-            "score/cost from --model-stats) or fixed (always --model)"
+            "model selection policy: fixed (default; always --model/$LLM_MODEL) "
+            "or metrics (internal experiments only; best measured score/cost "
+            "from --model-stats). An explicit --model/$LLM_MODEL forces fixed"
         ),
     )
     parser.add_argument(
@@ -194,10 +213,12 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    default_model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
+    env_model = os.environ.get("LLM_MODEL")
+    default_model = args.model or env_model or DEFAULT_MODEL
+    policy = _effective_model_policy(args.model, env_model, args.model_policy)
     selection = select_model(
         default_model,
-        policy=args.model_policy,
+        policy=policy,
         stats_path=args.model_stats,
     )
     model = selection.model

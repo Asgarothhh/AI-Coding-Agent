@@ -8,10 +8,13 @@ and that rejected tasks never receive an ``answer.txt``.
 
 from __future__ import annotations
 
+import io
 import json
+import os
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -23,7 +26,7 @@ from harness.llm import LLMConfig, build_llm_client
 from harness.policy import replan as real_replan
 from harness.runner import RunOptions, run
 from harness.solvers.base import SolveResult
-from run_agent import build_parser
+from run_agent import build_parser, main
 from tests.support import make_task
 
 
@@ -443,7 +446,8 @@ class PlanningIntegrationTests(unittest.TestCase):
         args = build_parser().parse_args(["--tasks-dir", "tasks"])
         self.assertEqual(args.policy, "value_cost_greedy")
         self.assertIsNone(args.planner_reserve)
-        self.assertEqual(args.llm_backend, "auto")
+        self.assertEqual(args.llm_backend, "gateway")
+        self.assertEqual(args.model_policy, "fixed")
 
         gateway = build_parser().parse_args(
             [
@@ -460,6 +464,57 @@ class PlanningIntegrationTests(unittest.TestCase):
         self.assertEqual(gateway.policy, "reward_sort")
         self.assertEqual(gateway.planner_reserve, 0.07)
         self.assertEqual(gateway.llm_backend, "gateway")
+
+
+class CliModelPolicyTests(unittest.TestCase):
+    def _run(self, root: Path, env: dict[str, str], extra: list[str] | None = None) -> tuple[int, str]:
+        stderr = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), redirect_stdout(
+            io.StringIO()
+        ), redirect_stderr(stderr):
+            code = main(
+                [
+                    "--tasks-dir",
+                    str(root),
+                    "--offline",
+                    "--dry-run",
+                    *(extra or []),
+                ]
+            )
+        return code, stderr.getvalue()
+
+    def test_env_model_forces_fixed_base_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tasks"
+            make_task(root, "math_a")
+            code, stderr = self._run(
+                root, {"LLM_MODEL": "qwen3.6-35b-a3b"}
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("model: qwen3.6-35b-a3b (policy=fixed;", stderr)
+        self.assertNotIn("noreason", stderr)
+
+    def test_env_model_overrides_explicit_metrics_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tasks"
+            make_task(root, "math_a")
+            code, stderr = self._run(
+                root,
+                {"LLM_MODEL": "qwen3.6-35b-a3b"},
+                ["--model-policy", "metrics"],
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("model: qwen3.6-35b-a3b (policy=fixed;", stderr)
+
+    def test_explicit_model_flag_selects_fixed_base_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "tasks"
+            make_task(root, "math_a")
+            code, stderr = self._run(
+                root, {}, ["--model", "qwen3.6-35b-a3b"]
+            )
+        self.assertEqual(code, 0)
+        self.assertIn("model: qwen3.6-35b-a3b (policy=fixed;", stderr)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,11 @@
 
 A Python 3.11 harness with a stdlib-only core and an optional openJiuwen
 model layer. The final image installs `openjiuwen==0.1.20.post1`
-(`requirements-openjiuwen.txt`). v5 sends production LLM calls through
-`OpenJiuwenGateway` (`--llm-backend gateway`); `auto` remains compatible and
-uses openJiuwen when present, otherwise the stdlib urllib client.
+(`requirements-openjiuwen.txt`). The official production path is
+`--llm-backend gateway` (the default after the compliance fix): production LLM
+calls go through `OpenJiuwenGateway`. `auto` remains compatible and uses
+openJiuwen when present, otherwise the stdlib urllib client, but it is **not**
+the production path.
 
 ```bash
 python /app/run_agent.py --tasks-dir /data/tasks
@@ -66,8 +68,9 @@ scripts/run_local.sh             offline hardened smoke run
 scripts/sdk_smoke.py             live gateway smoke (credentials via env)
 requirements.txt                 runtime SDK pin (openjiuwen==0.1.20.post1)
 requirements-openjiuwen.txt      openjiuwen==0.1.20.post1
-tests/                           stdlib unittest suite (250 tests, 2 skipped)
-tests/contract/                  32 contract tests (paths, budget, estimator, policy, parallel, time limit, E2E)
+tests/                           stdlib unittest suite (392 tests at baseline 60febbd; the
+                                 compliance fix adds tests — see the final verification output)
+tests/contract/                  47 contract tests at baseline 60febbd (same caveat)
 examples/task-dir/               eight official examples
 examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 ```
@@ -81,8 +84,9 @@ examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 * Content is one plain-text line with no explanation.
 * Writes are atomic: temp file in the destination directory, `flush`,
   `fsync`, `os.replace`, directory `fsync`.
-* Infeasible tasks, failed coding tasks, and budget/time-skipped tasks get no
-  `answer.txt`.
+* Infeasible tasks, failed coding tasks, and budget/time-skipped tasks get an
+  **empty** `answer.txt` (R3 placeholder), never a made-up answer. An empty file
+  is not counted as solved. They do not get "no answer.txt".
 * The `expected` field in `task.json` is **never read by production code**;
   only the test-suite reads it as ground truth.
 
@@ -90,11 +94,17 @@ examples/task-dir-extended/      16 tasks (8 official + 8 additional)
 
 There is exactly **one global budget** and **no per-task cap**.
 
+The **official** budget variable is **`BUDGET`**. The organizers confirmed that
+the budget is passed in `BUDGET` and that it may differ from 100k, so the
+official run command must pass `-e BUDGET` (see Docker below). Do not hard-code
+100k as the official budget.
+
 `BudgetProvider` resolves the total once at startup with the priority
-`--budget` > `OJ_TOKEN_BUDGET` > `BUDGET`. Without a value and without
-`--offline`, the CLI exits with a configuration error before any LLM call.
-With `--offline` only, `100000` is a **local test assumption**
-(`budget_source=offline-default`) and a warning is printed.
+`--budget` > `OJ_TOKEN_BUDGET` > `BUDGET`. `OJ_TOKEN_BUDGET` remains supported
+for local runs and older commands, but it is **not** the official variable.
+Without a value and without `--offline`, the CLI exits with a configuration
+error before any LLM call. With `--offline` only, `100000` is a **local test
+assumption** (`budget_source=offline-default`) and a warning is printed.
 
 Every LLM call reserves its worst case, then settles against actual usage:
 
@@ -188,17 +198,18 @@ official non-coding examples.
    `+`/`-`.
 3. Otherwise ask the configured LLM for a full-file JSON patch, apply it,
    verify the test hashes are unchanged, and rerun the tests.
-4. At most `--max-iterations` (default 6) LLM attempts.
-5. Return `DONE` only when all tests pass. On any failure no `answer.txt` is
-   written.
+4. At most `--max-iterations` (default 3) LLM attempts.
+5. Return `DONE` only when all tests pass. On any failure the placeholder stays
+   an empty `answer.txt` (R3), so the task is not counted as solved.
 
 Test files are never patched; if they change on disk they are restored from
 the snapshot before the solver gives up.
 
 ### LLM backends
 
-The `gateway` backend is the v5 production path. `stdlib` and `openjiuwen`
-remain compatible transports; all three implement the same
+The `gateway` backend is the v5 production path and the **default**
+(`--llm-backend gateway`). `stdlib`, `openjiuwen` and `auto` remain compatible
+transports; all implement the same
 `chat(messages, *, model, max_tokens, temperature, attempt) -> LLMResponse`
 contract.
 
@@ -206,18 +217,23 @@ contract.
 
 * v5 production path: every production LLM call goes through
   `OpenJiuwenGateway`, built on the `openjiuwen` Core SDK.
-* Only four models are allowed: `qwen3.8-27b`, `qwen3.8-27b-noreason`,
-  `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`.
+* The allowlist contains four aliases: `qwen3.8-27b`, `qwen3.8-27b-noreason`,
+  `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`. The official message of
+  28.10 names only `qwen3.8-27b` and `qwen3.6-35b-a3b`; whether the
+  `-noreason` aliases are allowed is **confirm with organizers** (the proxy
+  accepts them, but "accepted" is not "allowed"). The official default model is
+  the base alias `qwen3.6-35b-a3b`.
 * No silent fallback. An unavailable model, gateway error, or SDK import
   failure raises `LLMError`; the gateway never switches model or endpoint on
   its own.
-* Selected with `--llm-backend gateway`. `auto` remains compatible and keeps
-  the existing resolution order.
-* Live smoke and live runs are **verified**: `scripts/sdk_smoke.py` reached the
-  organizer proxy for all four aliases, and the container solved 8/8 official
-  tasks and 16/16 extended tasks through this backend (see Verification and
-  `eval/results/live-v5.md`). Credentials were supplied via the environment at
-  run time only; nothing is committed.
+* Selected with `--llm-backend gateway` (default). `auto` remains compatible
+  and keeps the existing resolution order, but is not production.
+* Live smoke and live runs are **historical**: `scripts/sdk_smoke.py` reached
+  the organizer proxy for all four aliases on 2026-11-10, and pre-R3 container
+  runs solved 8/8 official tasks. The 16/16 extended numbers are historical
+  and were **not re-verified after R3** (see Verification and `## NOT VERIFIED`).
+  Credentials were supplied via the environment at run time only; nothing is
+  committed.
 
 **stdlib** (`harness/llm.py`, `LLMClient`)
 
@@ -225,8 +241,9 @@ contract.
 * OpenAI-compatible `POST /v1/chat/completions`.
 * Retries `408/409/425/429/5xx` and network errors with exponential backoff
   and optional `Retry-After`; client errors are not retried.
-* Default model `qwen3.6-35b-a3b-noreason`, escalation model `qwen3.8-27b`
-  after a configurable number of attempts.
+* Default model `qwen3.6-35b-a3b` (base alias; the pre-fix default was
+  `qwen3.6-35b-a3b-noreason`), escalation model `qwen3.8-27b` after a
+  configurable number of attempts. An explicit `LLM_MODEL` / `--model` wins.
 * Usage is parsed from the response; if missing, a deterministic character
   estimate is used and marked `estimated=True`.
 
@@ -271,14 +288,14 @@ JSON object. Log files may be 0 bytes at WARNING when nothing is logged, which
 is normal. The JSON summary is printed before the LLM client is closed, and
 shutdown diagnostics go to stderr.
 
-`build_llm_client(config, backend="auto")` selects the transport:
+`build_llm_client(config, backend="gateway")` selects the transport:
 
 * `gateway` — `OpenJiuwenGateway` through `GatewayChatAdapter`; no fallback;
 * `stdlib` — always `LLMClient`;
 * `openjiuwen` — `OpenJiuwenLLMClient`, or `LLMError` when the package is not
   installed;
 * `auto` — openJiuwen when `importlib.util.find_spec("openjiuwen")` succeeds,
-  otherwise stdlib (backward-compatible, not the v5 production path).
+  otherwise stdlib (backward-compatible, **not** the production path).
 
 The chosen backend is printed on stderr and echoed in the final JSON summary as
 `llm_backend`.
@@ -296,23 +313,28 @@ python run_agent.py --tasks-dir /data/tasks --llm-backend gateway
 
 `--model-policy` decides which model the run asks for:
 
-* `metrics` (**default**) — `harness/model_router.py` reads
-  `--model-stats` (default `harness/model_stats.json`), keeps only
-  allowlisted models with measured rows (`tasks > 0`), and picks the maximum
-  `score / cost` (ties: more solved, then lower cost).
-* `fixed` — always use `--model` (or `$LLM_MODEL`, else the built-in
-  default), ignoring the stats file.
+* `fixed` (**default**, official run) — always use `--model` (or
+  `$LLM_MODEL`, else the built-in default `qwen3.6-35b-a3b`, the base alias),
+  ignoring the stats file. An explicit `LLM_MODEL` / `--model` has priority.
+* `metrics` — internal experiments only. `harness/model_router.py` reads
+  `--model-stats` (default `harness/model_stats.json`), keeps only allowlisted
+  models with measured rows (`tasks > 0`), and picks the maximum
+  `score / cost` (ties: more solved, then lower cost). It is **not** used for
+  the official run and must not be described as the production default.
 
-Candidates are always the four allowed aliases: `qwen3.8-27b`,
-`qwen3.8-27b-noreason`, `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`.
-Unmeasured aliases are never selected by `metrics`; they stay reachable only
-through `fixed`. The current winner is **`qwen3.6-35b-a3b-noreason`**
-(54 / 3421.8 = **0.0158**), which is also the built-in default. An explicit
-`--model` is the fallback: it is used as-is under `fixed`, and when the stats
-file is missing, malformed or empty the metrics policy returns that model
-with a human-readable reason instead of inventing one. There is still no
-silent substitution on a gateway error — the selection is made once, before
-the run, and logged.
+Candidates are the four aliases in the gateway allowlist: `qwen3.8-27b`,
+`qwen3.8-27b-noreason`, `qwen3.6-35b-a3b`, `qwen3.6-35b-a3b-noreason`. The
+organizer message of 28.10 names only the two base aliases; the `-noreason`
+variants are **confirm with organizers** and are not the official default.
+
+The historical metrics winner was `qwen3.6-35b-a3b-noreason`
+(54 / 3421.8 = 0.0158) on the pre-R3 tree. That measurement is **historical**;
+it is not a reason to override the judge's fixed model. An explicit `--model`
+is the fallback: it is used as-is under `fixed`, and when the stats file is
+missing, malformed or empty the metrics policy returns that model with a
+human-readable reason instead of inventing one. There is still no silent
+substitution on a gateway error — the selection is made once, before the run,
+and logged.
 
 ### Runner
 
@@ -350,13 +372,15 @@ reports the primary outcome first:
 python3.11 eval/run_eval.py --run <OUT> --holdout 0.3 --out eval/results/final.md
 ```
 
-Measured live 16-task run (gateway, 4 workers, budget 100000, `$OUT` mounted):
-**16/16 solved, score 54, 2343.0 tokens**; `predictions.jsonl` has 16 rows and
-`trace.jsonl` 16 rows; the model selection was
-**`qwen3.6-35b-a3b-noreason`** through the metrics policy (score/cost 0.0158,
-54 / 3421.8).
+Live 16-task evidence is limited to the raw summary in
+`eval/results/live-16.json`: **14/16 solved, score 47, 2350.8 tokens** (historical
+1-worker run). There is **no raw 4-worker R3 summary** in the repository; the
+earlier 16/16 / score 54 rows (3421.8 units) are historical pre-R3 runs and are
+**not re-verified**. The current live R3 run is **NOT VERIFIED** — do not quote
+16/16 as the current result.
 
-Final evaluation (`eval/results/final.md`, holdout 0.3, split by `task_id`):
+Final evaluation (`eval/results/final.md`, holdout 0.3, split by `task_id`) —
+computed on the historical pre-R3 trace, not on a current R3 run:
 
 | Block | Metric | Value |
 |---|---|---:|
@@ -399,15 +423,18 @@ planning.
 --max-workers INT         parallel sessions, capped at 5 (default 4)
 --time-limit FLOAT        wall clock seconds (default 3300)
 --triage-threshold FLOAT  default 0.6
---max-iterations INT      coding LLM attempts (default 6)
+--max-iterations INT      coding LLM attempts (default 3)
 --mutation-repair         enable deterministic coding mutation search
 --test-timeout FLOAT      per test file (default 60)
 --max-tokens INT          completion cap per LLM call (default 1024)
 --llm-backend CHOICE      auto | stdlib | openjiuwen | gateway
-                          (default auto; gateway is the v5 production path)
---model STR               default/fallback model
---model-policy CHOICE     fixed | metrics (default metrics: best measured
-                          score/cost from --model-stats; fixed: always --model)
+                          (default gateway: the production path through
+                          openJiuwen Core; auto is compatible, not production)
+--model STR               default/fallback model (default: $LLM_MODEL or
+                          qwen3.6-35b-a3b)
+--model-policy CHOICE     fixed | metrics (default fixed: always --model;
+                          metrics: internal experiments only, best measured
+                          score/cost from --model-stats)
 --model-stats PATH        measured stats JSON (default harness/model_stats.json)
 --escalation-model STR    escalation model
 --dry-run                 plan + JSON summary, no solving
@@ -447,9 +474,23 @@ this host (PyPI ~0.17 MB/s, warm rebuild 0.4 s) — well under the 4 GB image li
 
 `scripts/run_local.sh` uses the same hardening flags as the final contract
 (4 CPUs, 16 GB, read-only root, `/tmp` tmpfs 2 GB, `--cap-drop ALL`,
-`no-new-privileges`), with `--network none` and `--user "$(id -u):$(id -g)"` so
-it can write to the user-owned example directory. With `--mutation-repair` the
-offline smoke solves 8/8 for score 20 with **0 tokens**.
+`no-new-privileges`) with `--network none`. It copies `examples/task-dir` to a
+temporary directory and runs `chmod -R a+rwX` on that copy so uid 0 (without
+`CAP_DAC_OVERRIDE`) can write `answer.txt`; there is **no `--user` flag** in the
+script. With `--mutation-repair` the offline smoke solves 8/8 for score 20 with
+**0 tokens**.
+
+Because of that `chmod`, this smoke run does **not** prove anything about the
+judge's real mount. A **separate natural-permission test** runs the same
+container against a copy left with host permissions (foreign uid, `0755`) and is
+**expected to FAIL**: the harness cannot create `answer.txt` and reports every
+task as failed. That failure is the current honest status of the real-mount
+permission risk, not a regression in the smoke test.
+
+The organizers allow **8 logical cores**. Local tests use `--cpus 4`
+conservatively; this is a deliberate margin, not an unconfirmed limit. GPU and
+local neural models are forbidden; CPU encoders/tokenizers are allowed. Network
+access is only to the LLM API; runtime downloads are forbidden.
 
 The image uses `entrypoint.sh` as its `ENTRYPOINT`: it normalises `HOME` and
 `exec "$@"`, so signals and the exit code reach the judge. The command after
@@ -477,8 +518,10 @@ docker run --rm \
 
 * `--network hack-net` is organizer-specific; add it only if the event
   environment requires that network.
-* A budget must be supplied (`BUDGET` or `OJ_TOKEN_BUDGET`); the harness does
-  not invent one outside `--offline`.
+* The official budget variable is `BUDGET` and it may differ from 100k; the
+  command above passes `-e BUDGET`. `OJ_TOKEN_BUDGET` is still accepted by the
+  harness but is not the official variable. A budget must be supplied outside
+  `--offline`; the harness does not invent one.
 * No `/app/logs` tmpfs is required: openJiuwen logs go to
   `/tmp/openjiuwen-logs` at WARNING.
 * stdout is one JSON object; the `LLM backend:` line and any diagnostics go to
@@ -493,10 +536,11 @@ docker run --rm \
 
 ### Model layer
 
-`--llm-backend gateway` is the v5 production path and uses
+`--llm-backend gateway` is the v5 production path and the default. It uses
 `harness/openjiuwen_gateway.py` on the openJiuwen Core SDK. `--llm-backend
-auto` (default) remains backward compatible: it uses `harness/ojiuwen_llm.py`
-when openJiuwen is installed, otherwise stdlib. The final image installs:
+auto` remains backward compatible but is not production: it uses
+`harness/ojiuwen_llm.py` when openJiuwen is installed, otherwise stdlib. The
+final image installs:
 
 ```text
 openjiuwen==0.1.20.post1
@@ -535,9 +579,19 @@ same `harness.store` and `harness.budget` abstractions.
 
 API note: the DeepAgent path follows the signatures verified in the
 0.1.20.post1 wheel. It is import-guarded and has not been exercised end to end.
-Live model-layer verification is v5 (see Verification): the gateway path is
-proven with real proxy calls, while the v4 table is historical.
-`DeepAgentRuntime.solve()` is still not wired into the default runner.
+Live model-layer verification is historical v5 (see Verification): the gateway
+path was proven with real proxy calls before R3, and the v4 table is older
+history. `DeepAgentRuntime.solve()` is still not wired into the default runner.
+
+**Compliance risk — confirm with organizers.** On 11.11 at 19:25 the team asked
+whether using openJiuwen only as a model client/library is enough, or whether
+the agent's main loop must be built on openJiuwen agents/workflows. There is no
+answer yet. Our runtime calls the Core SDK `Model` through `OpenJiuwenGateway`,
+but the main loop, planner and solvers are our own. The official harness report
+requires `JIUWENSWARM_*` env or `jiuwenswarm`/`openjiuwen` in `process_tree`;
+registration already passed, but the final `run_agent.py` is started directly.
+This is an **unresolved compliance risk**, not a proven violation. Do not fake
+env values or the process tree; get written confirmation from the organizers.
 
 ## Extended task set
 
@@ -561,9 +615,14 @@ python3.11 run_agent.py --tasks-dir examples/task-dir-extended --offline --mutat
 
 Result: **16 tasks, 14 solved, 0 skipped, 2 failed gracefully, score 46, 0 tokens**.
 
-Measured live run (4 workers, gateway, read-only container): **16/16 solved, score 54,
-3421.8 units, 89 s**. So the current state is **offline 14/16, score 46** and
-**live 16/16, score 54** — the live gap is exactly the two coding tasks that need the LLM.
+The only raw live summary in the repository is `eval/results/live-16.json`:
+**14/16 solved, score 47, 2350.8 units** (historical 1-worker run, before the
+search fix). A later 4-worker run reported **16/16, score 54, 3421.8 units,
+89 s**; that row is **historical pre-R3** and the current R3 live run is
+**NOT VERIFIED** (no raw summary). Current verified state is therefore
+**offline 14/16, score 46**; live 16/16 is historical evidence, not a current
+result. The remaining live gap is exactly the two coding tasks that need the
+LLM.
 
 In the offline run only the two coding failures remain; both need the LLM path:
 
@@ -610,9 +669,11 @@ Raw summaries: `eval/results/external-{gsm8k,wikitable,hotpotqa,mbpp,quixbugs,lo
 
 ## Tests
 
-The full suite is **250 stdlib unittest tests**, of which **2 are skipped** on
-the host because they require a real `openjiuwen` import. **32 contract tests**
-live under `tests/contract/`.
+The suite at baseline `60febbd` was **392 stdlib unittest tests** (2 skipped on
+the host because they require a real `openjiuwen` import) plus **47 contract
+tests** under `tests/contract/`. The compliance fix adds tests, so the final
+count may be 393+48 or different: the authoritative number is the final
+verification output, not this baseline.
 
 ```bash
 ~/.local/bin/python3.11 -m unittest discover -s tests -v
@@ -630,9 +691,9 @@ Contract coverage includes:
 * end-to-end example runs.
 
 The host unit tests for the openJiuwen clients use injected fake models and
-import guards. The v5 live gateway smoke was also run for real against the
-organizer proxy: all four aliases answered, and the container runs are recorded
-in Verification and `eval/results/live-v5.md`.
+import guards. The gateway smoke was run for real against the organizer proxy
+before R3: all four aliases answered on 2026-11-10. Those live runs are
+historical; the current R3 live run is **NOT VERIFIED**.
 
 ## Verification
 
@@ -648,29 +709,28 @@ Local commands:
 # scripts/sdk_smoke.py  # live: needs LLM_BASE_URL / LLM_API_KEY in env; all 4 aliases OK on 2026-11-10
 ```
 
-Verified v5 results:
+Measured offline results:
 
 | Run | Result | Tokens spent | Notes |
 |---|---|---|---|
 | Offline examples | 8 tasks, 0 infeasible, 6 solved, 2 coding failed gracefully | 0 | score 16 |
 | Offline + `--mutation-repair` | 8/8 solved | 0 | score 20 |
-| Extended offline set | 16 tasks, 14 solved, 2 failed gracefully | 0 | score 46 |
+| Extended offline set + `--mutation-repair` | 16 tasks, 14 solved, 2 failed gracefully | 0 | score 46 |
 
-v5 live runs (gateway backend, read-only container, budget from
-`OJ_TOKEN_BUDGET=100000`). The current rows use 4 workers,
-`OJ_MAX_CONCURRENT_LLM=3` and `--cost-basis expected`; the earlier 1-worker runs are
-kept in the table below as history. Details and the redacted command are in
-`eval/results/live-v5.md`; the raw summaries are `eval/results/live-8.json` and
-`eval/results/live-16.json` (historical 1-worker runs).
+v5 live runs (gateway backend, read-only container). **All rows below are
+historical and predate R3**; they were not re-verified on the current tree. The
+raw summaries are `eval/results/live-8.json` and `eval/results/live-16.json`
+(1-worker runs). Details and the redacted command are in
+`eval/results/live-v5.md`.
 
 | Live run | Result | Tokens spent | Notes |
 |---|---|---|---|
-| **100-task stress** (replicated extended set, 4 workers) | **100/100 solved**, 0 failed, 0 skipped, 0 errors | **19537.5** (prompt 51355, completion 14402) | **score 336**, 100 s; **not the official 100 tasks** — the 16-task extended set replicated with unique ids; `reconsidered=3`, `final_accepted=100`, `replans=96`, `budget.reserved=0.0`, budget remaining 80462.5 |
-| Extended 16 tasks (4 workers) | **16/16 solved**, 0 failed, 0 skipped, 0 errors | **3421.8** (prompt 8378, completion 2584) | **score 54**, 89 s; `OJ_MAX_CONCURRENT_LLM=3`, `--cost-basis expected`, `budget.reserved=0.0`; one `429` retried successfully via `Retry-After` |
-| Extended 16 tasks, `--model qwen3.8-27b` (4 workers) | 15/16 solved, 1 failed, 0 skipped, 0 errors | **9251.7** (prompt 15747, completion 7677) | score 50, 119 s; `coding_0008` failed ("LLM did not return a usable full-file patch"); same 16 tasks, 4 workers, gateway, `budget=100000` |
-| Official 8 tasks (4 workers) | **8/8 solved**, 0 failed, 0 skipped, 0 errors | **454.3** (prompt 1433, completion 311) | **score 20**, 38 s; no `429` |
+| **100-task stress** (replicated extended set, 4 workers) | **100/100 solved**, 0 failed, 0 skipped, 0 errors | **19537.5** (prompt 51355, completion 14402) | **score 336**, 100 s; **not the official 100 tasks** — the 16-task extended set replicated with unique ids; `reconsidered=3`, `final_accepted=100`, `replans=96`, `budget.reserved=0.0`, budget remaining 80462.5; historical |
+| Extended 16 tasks (4 workers, historical pre-R3) | 16/16 solved, 0 failed, 0 skipped, 0 errors | 3421.8 (prompt 8378, completion 2584) | score 54, 89 s; not re-verified on R3; no raw summary in the repo |
+| Extended 16 tasks, `--model qwen3.8-27b` (4 workers, historical) | 15/16 solved, 1 failed, 0 skipped, 0 errors | 9251.7 (prompt 15747, completion 7677) | score 50, 119 s; `coding_0008` failed ("LLM did not return a usable full-file patch"); historical |
+| Official 8 tasks (4 workers, historical) | 8/8 solved, 0 failed, 0 skipped, 0 errors | 454.3 (prompt 1433, completion 311) | score 20, 38 s; historical pre-R3 |
 | Official 8 tasks (history, 1 worker) | 8 solved, 0 failed, 0 skipped, 0 errors | 461.3 (prompt 1433, completion 318) | score 20; `policy=value_cost_greedy`, `budget_source=env:OJ_TOKEN_BUDGET`, `llm_backend=openjiuwen-gateway` |
-| Extended 16 tasks (history, 1 worker) | 14 solved, 2 failed, 0 skipped, 0 errors | 2350.8 (prompt 7028, completion 1648) | score 47; pre-search-fix run (search 2/4 at that time); coding 4/4 via LLM, data_analysis 4/4, math 4/4 |
+| Extended 16 tasks (history, 1 worker) | **14 solved**, 2 failed, 0 skipped, 0 errors | **2350.8** (prompt 7028, completion 1648) | score 47; `eval/results/live-16.json`; pre-search-fix run (search 2/4 at that time) |
 
 **100-task stress (replicated set, not the official 100 tasks).** The 16-task extended set
 was copied and replicated with unique `task_id`s until 100 tasks existed, then run live with
@@ -683,18 +743,21 @@ coding cost ~3.9k versus an actual ~500–600, so the replan now re-estimates al
 tasks and can re-accept tasks it rejected earlier. This is a stress test of planning and
 budget behaviour, not a claim about the official task set.
 
-The gateway path is **proven with real proxy calls**: `scripts/sdk_smoke.py` answered
-for all four allowed aliases (`qwen3.8-27b` 2468.3 ms in56/out27/reasoning23;
+The gateway path was **proven with real proxy calls before R3**: `scripts/sdk_smoke.py`
+answered for all four aliases (`qwen3.8-27b` 2468.3 ms in56/out27/reasoning23;
 `qwen3.8-27b-noreason` 287.7 ms in32/out2; `qwen3.6-35b-a3b` 1194.2 ms in30/out64;
-`qwen3.6-35b-a3b-noreason` 235.3 ms in32/out2), and the official task set solved 8/8
-through the same backend. Credentials were supplied only through
-`LLM_BASE_URL` / `LLM_API_KEY` at run time and are **not committed**; the runs used the
-organizer proxy, so they are reproducible only with organizer credentials.
+`qwen3.6-35b-a3b-noreason` 235.3 ms in32/out2), and the official task set solved
+8/8 through the same backend. That is historical evidence, not a current R3
+result. Credentials were supplied only through `LLM_BASE_URL` / `LLM_API_KEY`
+at run time and are **not committed**; the runs used the organizer proxy, so
+they are reproducible only with organizer credentials.
 
-The default model stays `qwen3.6-35b-a3b-noreason`: on the same 16 extended tasks
-`--model qwen3.8-27b` scored lower (50 vs 54), cost more than twice the tokens (9251.7 vs
-3421.8) and took longer (119 s vs 89 s), and it failed `coding_0008` on the full-file patch
-format — so the stronger model is not worth the cost or latency.
+The official default model is the base alias **`qwen3.6-35b-a3b`** with
+`--model-policy fixed`; an explicit `LLM_MODEL` / `--model` wins. The old
+`qwen3.6-35b-a3b-noreason` metrics winner is history. The earlier comparison on
+16 extended tasks (`--model qwen3.8-27b` scored 50 vs 54 and cost 9251.7 vs
+3421.8) is historical pre-R3 data; it is not used to override the judge's fixed
+model.
 
 The v4 live-run table below is **historical**. Those runs used the v4
 stdlib/openjiuwen path, not the v5 gateway, and were **not re-verified in v5**.
@@ -706,13 +769,12 @@ It is kept for reference only.
 | Live container, explicit `--llm-backend openjiuwen --max-workers 1` | 8/8 solved | 454.3 (prompt 1433, completion 311) | score 20, ~5.3 s; stdout single JSON; stderr only `LLM backend: openjiuwen` |
 | Live container, exact official invocation (`--tasks-dir` only; default auto, max-workers=4) | 8/8 solved | 1162.7 (prompt 2857, completion 877) | score 20, 16.9 s; `llm_backend=openjiuwen`, requested `auto`; 4 proxy calls; `coding_0003` needed 3 repair iterations; concurrency safe, no event-loop error |
 
-Measured v5 live result: **8/8 official tasks for score 20** (454.3 units, 38 s) and
-**16/16 extended tasks for score 54** (3421.8 units, 89 s), with 0 errors, both at
-`--max-workers 4`. The live gateway also retries `429`/`5xx` with `Retry-After` behind an
-LLM semaphore of 3 (`OJ_MAX_CONCURRENT_LLM=3`), so one `429` during the 16-task run was
-retried without losing the task, and the planner now uses `--cost-basis expected` by
-default. Credentials are not committed; the runs used the organizer proxy with
-`LLM_BASE_URL` / `LLM_API_KEY` from the environment.
+Historical v5 live result: **8/8 official tasks for score 20** (454.3 units, 38 s)
+and **16/16 extended tasks for score 54** (3421.8 units, 89 s), with 0 errors,
+both at `--max-workers 4`, measured **before R3**. The current R3 live run is
+**NOT VERIFIED**; the only raw 16-task summary is 14/16, 2350.8. Credentials are
+not committed; the runs used the organizer proxy with `LLM_BASE_URL` /
+`LLM_API_KEY` from the environment.
 
 The exact official invocation is just:
 
@@ -721,6 +783,93 @@ python /app/run_agent.py --tasks-dir /data/tasks
 ```
 
 with `BUDGET`, `LLM_BASE_URL` and `LLM_API_KEY` supplied by the environment.
+The backend and model policy are the defaults (`gateway`, `fixed`,
+`qwen3.6-35b-a3b`); `LLM_MODEL`/`--model` overrides the default model.
+
+## Submission
+
+Official deadline: **13.11.2026 23:59 MSK**. Send the repository link to
+**openjiuwen_org@nsu.ru** — as a reply to the key email or as a separate email.
+The repository may be **public or private**. The internal freeze at 12.11 18:00
+MSK is an internal milestone, not the official deadline.
+
+Checklist before sending:
+
+- [ ] `git rev-parse HEAD` recorded; the submitted commit is the one you tested.
+- [ ] Repository URL is final and accessible to the organizers (public, or
+      private with the organizers' access).
+- [ ] Tests: baseline `60febbd` = 392 unit + 47 contract; **run the final suite
+      after the fix and paste the actual counts** (may be 393+48 or other).
+- [ ] Offline example run with `--mutation-repair`: 8/8, score 20, 0 tokens.
+- [ ] Extended offline set with `--mutation-repair`: 14/16, score 46 (known
+      coding failures are documented).
+- [ ] Docker image builds and is under 4 GB; the official command passes
+      `-e BUDGET`.
+- [ ] No secrets in the tree or history; no `git push` without the owner's
+      approval.
+- [ ] The email is sent **before 13.11.2026 23:59 MSK**.
+
+Email template (replace `<FINAL_COMMIT>` **after** the final push):
+
+```text
+Кому: openjiuwen_org@nsu.ru
+Тема: Решение команды «Стивенсон» — openJiuwen Challenge 2026
+
+Здравствуйте!
+
+Направляем решение команды «Стивенсон» для openJiuwen Challenge 2026.
+
+Команда: Стивенсон
+Registration ID: 5555bec9277725f88092706dc0ae47d7
+Репозиторий: https://github.com/Asgarothhh/AI-Coding-Agent
+Commit: <FINAL_COMMIT>
+
+Репозиторий: публичный (доступен без дополнительных приглашений).
+Точка входа: python /app/run_agent.py --tasks-dir /data/tasks
+Бюджет передаётся через переменную окружения BUDGET; LLM_BASE_URL и
+LLM_API_KEY — через окружение. Модель по умолчанию — qwen3.6-35b-a3b,
+политика fixed.
+
+С уважением,
+команда «Стивенсон»
+```
+
+The email has **not** been sent yet. Do not claim it was sent; `<FINAL_COMMIT>`
+must be replaced with the commit that is actually pushed and tested.
+
+## NOT VERIFIED
+
+These items are not proven on the current tree and must not be reported as PASS:
+
+* **Live R3 16/16.** The current R3 live run is not confirmed. The only raw
+  16-task summary is `eval/results/live-16.json` = 14/16, score 47, 2350.8
+  tokens (historical 1-worker). Earlier 16/16 / score 54 / 3421.8 rows are
+  historical pre-R3.
+* **RAM.** No live measurement of peak RSS against the 16 GB limit; only the
+  container flag is set.
+* **Real mount permissions.** The judge's real `/data/tasks` ownership and mode
+  are unknown. `run_local.sh` masks this with `chmod -R a+rwX`; the separate
+  natural-permission test is expected to FAIL on a foreign uid `0755` mount.
+* **Two vs four models.** The organizer message of 28.10 names only
+  `qwen3.8-27b` and `qwen3.6-35b-a3b`; the local spec lists four aliases. Whether
+  the `-noreason` aliases are allowed is **confirm with organizers**. This is
+  not a proven violation.
+* **Exact harness report for the final submission.** The official harness
+  report expects `JIUWENSWARM_*` env or `jiuwenswarm`/`openjiuwen` in
+  `process_tree`. Registration passed, but `run_agent.py` is started directly.
+  Whether using openJiuwen only as a model client/library is enough (vs building
+  the main loop on openJiuwen agents/workflows) was asked on 11.11 at 19:25 and
+  has **no answer**; **confirm with organizers**. Do not fake env or process
+  tree.
+* **Post-fix defaults.** This README documents the official post-fix defaults
+  (`gateway`, `fixed`, base `qwen3.6-35b-a3b`). On the baseline `60febbd` tree
+  argparse still defaults to `auto`/`metrics`; until that fix lands, pass
+  `--llm-backend gateway --model-policy fixed --model qwen3.6-35b-a3b`
+  explicitly.
+* **Final test count.** 392 unit + 47 contract is the baseline `60febbd`; the
+  compliance fix adds tests, so use the final verification output.
+* **Cold build time on the judge's network.** The local cold build was measured
+  on this host; the judge's throughput is unknown.
 
 ## Notes and limitations
 

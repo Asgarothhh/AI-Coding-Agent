@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import unittest
+from unittest import mock
 
 from harness.llm import (
     DEFAULT_MODEL,
@@ -15,6 +17,18 @@ from harness.mock_proxy import MockProxyServer
 
 
 class LLMClientTests(unittest.TestCase):
+    def test_default_model_is_base_alias(self) -> None:
+        self.assertEqual(DEFAULT_MODEL, "qwen3.6-35b-a3b")
+        self.assertEqual(LLMConfig(base_url=None).model, DEFAULT_MODEL)
+        self.assertNotIn("noreason", DEFAULT_MODEL)
+
+    def test_llm_model_env_overrides_default(self) -> None:
+        with mock.patch.dict(
+            os.environ, {"LLM_MODEL": "qwen3.6-35b-a3b"}, clear=False
+        ):
+            config = LLMConfig.from_env()
+        self.assertEqual(config.model, "qwen3.6-35b-a3b")
+
     def _client(self, proxy: MockProxyServer, **overrides: object) -> LLMClient:
         config = LLMConfig(
             base_url=proxy.base_url,

@@ -92,6 +92,15 @@ def make_config(**overrides: Any) -> LLMConfig:
 
 
 class OpenJiuwenLLMClientTests(unittest.TestCase):
+    def test_default_model_is_base_alias(self) -> None:
+        self.assertEqual(DEFAULT_MODEL, "qwen3.6-35b-a3b")
+        factory = RecordingFactory(
+            lambda: FakeAssistant("ok", FakeUsage(1, 1, 0, 2))
+        )
+        client = self.make_client(factory)
+        client.chat([{"role": "user", "content": "hi"}])
+        self.assertEqual(factory.specs[0].model_name, "qwen3.6-35b-a3b")
+
     def make_client(
         self,
         factory: RecordingFactory | None = None,

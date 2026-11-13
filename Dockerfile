@@ -81,4 +81,4 @@ ENV PIP_NO_INDEX=1 \
 # command; see spec section 11.2.
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "/app/run_agent.py", "--tasks-dir", "/data/tasks"]
+CMD ["python", "/app/run_agent.py", "--tasks-dir", "/data/tasks", "--llm-backend", "gateway", "--model-policy", "fixed"]
